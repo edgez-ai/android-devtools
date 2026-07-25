@@ -7,6 +7,7 @@
 typedef char *(*create_identity_fn)(const char *);
 typedef char *(*start_client_fn)(const char *);
 typedef char *(*stop_client_fn)(void);
+typedef char *(*provide_scrcpy_jar_fn)(const char *, int);
 typedef char *(*pair_wireless_fn)(const char *, int, const char *, const char *, const char *, int);
 typedef char *(*set_adb_target_fn)(const char *, int);
 typedef void (*free_result_fn)(char *);
@@ -142,6 +143,41 @@ Java_ai_edgez_androiddevtools_NativeBridge_nativeStopClient(
         return error_result(env, "{\"ok\":false,\"status_code\":0,\"error\":\"missing stop symbols\"}");
     }
     jstring output = copy_result(env, stop_client(), free_result);
+    dlclose(handle);
+    return output;
+}
+
+JNIEXPORT jstring JNICALL
+Java_ai_edgez_androiddevtools_NativeBridge_nativeProvideScrcpyJar(
+        JNIEnv *env, jclass clazz, jbyteArray bytes) {
+    (void) clazz;
+    void *handle = open_library();
+    if (handle == NULL) {
+        return error_result(env, "{\"ok\":false,\"status_code\":0,\"error\":\"failed to load libedgejoin.so\"}");
+    }
+    provide_scrcpy_jar_fn provide_scrcpy =
+            (provide_scrcpy_jar_fn) dlsym(handle, "EdgeProvideScrcpyJar");
+    free_result_fn free_result = (free_result_fn) dlsym(handle, "EdgeJoinFree");
+    if (provide_scrcpy == NULL || free_result == NULL) {
+        dlclose(handle);
+        return error_result(env, "{\"ok\":false,\"status_code\":0,\"error\":\"missing scrcpy symbols\"}");
+    }
+
+    char *result;
+    if (bytes == NULL) {
+        result = provide_scrcpy(NULL, 0);
+    } else {
+        jsize length = (*env)->GetArrayLength(env, bytes);
+        jbyte *buffer = (*env)->GetByteArrayElements(env, bytes, NULL);
+        if (buffer == NULL) {
+            dlclose(handle);
+            return error_result(env, "{\"ok\":false,\"status_code\":0,\"error\":\"failed to access scrcpy asset bytes\"}");
+        }
+        result = provide_scrcpy((const char *) buffer, (int) length);
+        (*env)->ReleaseByteArrayElements(env, bytes, buffer, JNI_ABORT);
+    }
+
+    jstring output = copy_result(env, result, free_result);
     dlclose(handle);
     return output;
 }

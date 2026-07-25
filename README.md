@@ -11,6 +11,8 @@ branch, without the AutoJs runtime. It:
 - pairs the native ADB client with the device;
 - exposes the device's local `adbd` through
   `/gvisor/libp2p-tap-tcp/1.0.0`;
+- supplies AutoJs6's scrcpy server asset to the native client and lazily
+  bootstraps it when libp2p target port `8886` is requested;
 - keeps the proxy alive in a foreground service and restarts it after boot.
 
 ## Build
@@ -19,6 +21,10 @@ The native `libedgejoin.so` files are copied from AutoJs6 commit
 `042d4bc0bee8ade160ac9d659b48e2dfe15b09ae`. The corresponding source is
 `jasonhao518/autojs6-libp2p` commit
 `c6269288d5a36a2538115082b52469cec26210c5`.
+
+The bundled `app/src/main/assets/scrcpy/scrcpy-server.jar` is copied byte for
+byte from the same AutoJs6 `origin/libp2p` revision. Its SHA-256 is
+`a2223a3a4249822187906e0fa8b147eb5a9ed94e47a9e8e8b3f07da651149806`.
 
 ```sh
 git submodule update --init --recursive
@@ -104,6 +110,11 @@ flutter run -d 127.0.0.1:5555
 Once `flutter run` is attached, use `r` for hot reload and `R` for hot
 restart. The VM service and all forwarded ports travel inside the same ADB
 connection, so no extra libp2p ports are required.
+
+For the custom scrcpy consumer used with AutoJs6, open a libp2p tunnel whose
+remote target is `8886`. The first connection makes the Android native client
+push `/data/local/tmp/scrcpy-server.jar`, launch
+`com.genymobile.scrcpy.Server`, and proxy its local port `8886`.
 
 ## Security notes
 
