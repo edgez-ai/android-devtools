@@ -56,13 +56,16 @@ requiring Go, while `buildNative` makes their provenance reproducible.
 ## Device setup
 
 1. Install and open Android DevTools.
-2. Enter the join endpoint, serial/endpoint name, and join key, then tap
+2. Grant notification and Nearby Wi-Fi permissions, then allow unrestricted
+   battery use when Android prompts. These keep discovery and the foreground
+   relay connection reliable.
+3. Enter the join endpoint, serial/endpoint name, and join key, then tap
    **Join network**.
-3. Open **Wireless debugging** and choose **Pair device with pairing code**.
-4. Enter the six-digit code in Android DevTools and tap
+4. Open **Wireless debugging** and choose **Pair device with pairing code**.
+5. Enter the six-digit code in Android DevTools and tap
    **Discover, pair & start**. Keep the system pairing dialog open while
    discovery runs.
-5. Copy the peer ID shown by the app into the JupyterHub deployment as
+6. Copy the peer ID shown by the app into the JupyterHub deployment as
    `LIBP2P_AGENT_MOBILE_PEER_ID`.
 
 The app restarts the tunnel after boot, but Android's Wireless Debugging switch

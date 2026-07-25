@@ -6,8 +6,10 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.View;
@@ -20,11 +22,14 @@ import android.widget.TextView;
 
 import org.json.JSONObject;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
+    private static final int PERMISSION_REQUEST = 10;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private EditText endpointInput;
     private EditText serialInput;
@@ -32,6 +37,7 @@ public final class MainActivity extends Activity {
     private EditText nameInput;
     private EditText pairCodeInput;
     private TextView peerIdText;
+    private TextView permissionStatusText;
     private TextView statusText;
 
     @Override
@@ -40,7 +46,16 @@ public final class MainActivity extends Activity {
         NativeBridge.initialize(this);
         setContentView(buildContent());
         refreshPeerId();
-        requestNotifications();
+        refreshPermissionStatus();
+        requestRuntimePermissions();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (permissionStatusText != null) {
+            refreshPermissionStatus();
+        }
     }
 
     @Override
@@ -63,10 +78,24 @@ public final class MainActivity extends Activity {
                 Color.DKGRAY);
         content.addView(subtitle, margins(0, 4, 0, 20));
 
-        content.addView(section("1. Join the libp2p network"));
+        content.addView(section("1. Allow background device discovery"));
+        content.addView(text(
+                "Notifications expose proxy health, Nearby devices allows Wireless Debugging "
+                        + "discovery, and unrestricted battery use keeps the relay reservation alive.",
+                14,
+                Color.DKGRAY));
+        permissionStatusText = text("", 14, Color.DKGRAY);
+        content.addView(permissionStatusText, margins(0, 8, 0, 4));
+        content.addView(button("Grant required permissions", view -> requestRequiredPermissions()));
+
+        content.addView(section("2. Join the libp2p network"), margins(0, 20, 0, 4));
+        content.addView(text(
+                "Enter the device serial used by JupyterHub and its one-time join key.",
+                14,
+                Color.DKGRAY));
         endpointInput = input("Join endpoint", ConfigStore.DEFAULT_JOIN_ENDPOINT, false);
-        serialInput = input("Device endpoint / serial", defaultSerial(), false);
-        joinKeyInput = input("Join key", "", true);
+        serialInput = input("Serial number", defaultSerial(), false);
+        joinKeyInput = input("Join key (required)", "", true);
         nameInput = input("Device name", Build.MANUFACTURER + " " + Build.MODEL, false);
         content.addView(endpointInput);
         content.addView(serialInput);
@@ -78,7 +107,7 @@ public final class MainActivity extends Activity {
         peerIdText.setTextIsSelectable(true);
         content.addView(peerIdText, margins(0, 10, 0, 20));
 
-        content.addView(section("2. Pair Wireless Debugging"));
+        content.addView(section("3. Pair Wireless Debugging"));
         content.addView(text(
                 "Open Wireless debugging → Pair device with pairing code. Keep that dialog open, "
                         + "enter the code below, then start discovery.",
@@ -90,7 +119,7 @@ public final class MainActivity extends Activity {
         content.addView(pairCodeInput);
         content.addView(button("Discover, pair & start", view -> pairAndStart()));
 
-        content.addView(section("3. Proxy lifecycle"), margins(0, 20, 0, 4));
+        content.addView(section("4. Proxy lifecycle"), margins(0, 20, 0, 4));
         content.addView(button("Refresh ADB & start", view -> startProxy()));
         content.addView(button("Stop proxy", view -> {
             ProxyService.stop(this);
@@ -131,6 +160,11 @@ public final class MainActivity extends Activity {
     }
 
     private void pairAndStart() {
+        if (!hasNearbyPermission()) {
+            showStatus("Grant Nearby Wi-Fi permission before discovering Wireless Debugging.");
+            requestRuntimePermissions();
+            return;
+        }
         String code = value(pairCodeInput).replaceAll("\\s+", "");
         if (code.isEmpty()) {
             showStatus("Open the system pairing-code dialog and enter its code first.");
@@ -209,11 +243,106 @@ public final class MainActivity extends Activity {
         runOnUiThread(() -> showStatus(message));
     }
 
-    private void requestNotifications() {
-        if (Build.VERSION.SDK_INT >= 33
-                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+    private void requestRequiredPermissions() {
+        if (!hasRuntimePermissions()) {
+            requestRuntimePermissions();
+            return;
+        }
+        requestUnrestrictedBattery();
+    }
+
+    private void requestRuntimePermissions() {
+        if (Build.VERSION.SDK_INT < 33) {
+            refreshPermissionStatus();
+            return;
+        }
+        List<String> missing = new ArrayList<>();
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 10);
+            missing.add(Manifest.permission.POST_NOTIFICATIONS);
+        }
+        if (checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
+                != PackageManager.PERMISSION_GRANTED) {
+            missing.add(Manifest.permission.NEARBY_WIFI_DEVICES);
+        }
+        if (!missing.isEmpty()) {
+            requestPermissions(missing.toArray(new String[0]), PERMISSION_REQUEST);
+        } else {
+            refreshPermissionStatus();
+        }
+    }
+
+    private boolean hasRuntimePermissions() {
+        return Build.VERSION.SDK_INT < 33
+                || (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                        == PackageManager.PERMISSION_GRANTED
+                    && checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
+                        == PackageManager.PERMISSION_GRANTED);
+    }
+
+    private boolean hasNearbyPermission() {
+        return Build.VERSION.SDK_INT < 33
+                || checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
+                    == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestUnrestrictedBattery() {
+        PowerManager powerManager = getSystemService(PowerManager.class);
+        if (powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+            refreshPermissionStatus();
+            showStatus("All required permissions are granted.");
+            return;
+        }
+        try {
+            Intent request = new Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:" + getPackageName()));
+            startActivity(request);
+        } catch (ActivityNotFoundException exception) {
+            startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+        }
+    }
+
+    private void refreshPermissionStatus() {
+        if (permissionStatusText == null) {
+            return;
+        }
+        boolean notifications = Build.VERSION.SDK_INT < 33
+                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                    == PackageManager.PERMISSION_GRANTED;
+        boolean nearby = Build.VERSION.SDK_INT < 33
+                || checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
+                    == PackageManager.PERMISSION_GRANTED;
+        PowerManager powerManager = getSystemService(PowerManager.class);
+        boolean unrestricted = powerManager.isIgnoringBatteryOptimizations(getPackageName());
+        permissionStatusText.setText(
+                permissionLine("Notifications", notifications)
+                        + "\n" + permissionLine("Nearby Wi-Fi", nearby)
+                        + "\n" + permissionLine("Battery unrestricted", unrestricted));
+        permissionStatusText.setTextColor(
+                notifications && nearby && unrestricted
+                        ? Color.rgb(30, 120, 60) : Color.rgb(180, 85, 20));
+    }
+
+    private static String permissionLine(String name, boolean granted) {
+        return (granted ? "✓ " : "○ ") + name;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != PERMISSION_REQUEST) {
+            return;
+        }
+        refreshPermissionStatus();
+        if (hasNearbyPermission()) {
+            showStatus("Discovery permission granted. Allow unrestricted battery use next.");
+            requestUnrestrictedBattery();
+        } else {
+            showStatus(
+                    "Nearby Wi-Fi and notification permissions are needed for discovery "
+                            + "and reliable background status.");
         }
     }
 
