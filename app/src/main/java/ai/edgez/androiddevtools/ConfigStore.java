@@ -18,12 +18,16 @@ import java.nio.charset.StandardCharsets;
 
 final class ConfigStore {
     static final String DEFAULT_JOIN_ENDPOINT = "https://www.edgez.ai/api/join";
-    private static final String PREFS = "libp2p";
+    private static final String PREFS = "edgejoin";
     private static final String KEY_CONFIG = "config";
     private static final String KEY_PEER_ID = "peer_id";
-    private static final String KEY_SERIAL = "serial";
-    private static final String KEY_ADB_HOST = "adb_host";
-    private static final String KEY_ADB_PORT = "adb_port";
+    private static final String KEY_PRIVATE_KEY = "private_key";
+    private static final String KEY_PUBLIC_KEY = "public_key";
+    private static final String KEY_JOIN_RESPONSE = "join_response";
+    private static final String KEY_JOIN_KEY = "join_key";
+    private static final String KEY_SERIAL = "serial_number";
+    private static final String KEY_ADB_HOST = "adb_proxy_host";
+    private static final String KEY_ADB_PORT = "adb_proxy_port";
 
     private ConfigStore() {
     }
@@ -81,6 +85,10 @@ final class ConfigStore {
                 .edit()
                 .putString(KEY_CONFIG, config.toString())
                 .putString(KEY_PEER_ID, identity.getString("peer_id"))
+                .putString(KEY_PRIVATE_KEY, identity.getString("private_key"))
+                .putString(KEY_PUBLIC_KEY, identity.optString("public_key", ""))
+                .putString(KEY_JOIN_RESPONSE, response)
+                .putString(KEY_JOIN_KEY, joinKey)
                 .putString(KEY_SERIAL, serial)
                 .apply();
         return identity.getString("peer_id");
@@ -112,6 +120,16 @@ final class ConfigStore {
     static String peerId(Context context) {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getString(KEY_PEER_ID, "");
+    }
+
+    static String storedSerial(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_SERIAL, "");
+    }
+
+    static String storedJoinKey(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_JOIN_KEY, "");
     }
 
     static String clientConfig(Context context) throws JSONException {

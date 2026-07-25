@@ -20,8 +20,6 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import org.json.JSONObject;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -31,11 +29,8 @@ import java.util.Locale;
 public final class MainActivity extends Activity {
     private static final int PERMISSION_REQUEST = 10;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private EditText endpointInput;
     private EditText serialInput;
     private EditText joinKeyInput;
-    private EditText nameInput;
-    private EditText pairCodeInput;
     private TextView peerIdText;
     private TextView permissionStatusText;
     private TextView statusText;
@@ -90,17 +85,18 @@ public final class MainActivity extends Activity {
 
         content.addView(section("2. Join the libp2p network"), margins(0, 20, 0, 4));
         content.addView(text(
-                "Enter the device serial used by JupyterHub and its one-time join key.",
+                "Enter the device serial used by JupyterHub and its join key.",
                 14,
                 Color.DKGRAY));
-        endpointInput = input("Join endpoint", ConfigStore.DEFAULT_JOIN_ENDPOINT, false);
-        serialInput = input("Serial number", defaultSerial(), false);
-        joinKeyInput = input("Join key (required)", "", true);
-        nameInput = input("Device name", Build.MANUFACTURER + " " + Build.MODEL, false);
-        content.addView(endpointInput);
+        String storedSerial = ConfigStore.storedSerial(this);
+        String storedJoinKey = ConfigStore.storedJoinKey(this);
+        serialInput = input(
+                "Serial number",
+                storedSerial.isEmpty() ? defaultSerial() : storedSerial,
+                false);
+        joinKeyInput = input("Join key", storedJoinKey, true);
         content.addView(serialInput);
         content.addView(joinKeyInput);
-        content.addView(nameInput);
         content.addView(button("Join network", view -> joinNetwork()));
 
         peerIdText = text("Peer ID: not joined", 14, Color.DKGRAY);
@@ -109,15 +105,11 @@ public final class MainActivity extends Activity {
 
         content.addView(section("3. Pair Wireless Debugging"));
         content.addView(text(
-                "Open Wireless debugging → Pair device with pairing code. Keep that dialog open, "
-                        + "enter the code below, then start discovery.",
+                "Tap below, choose “Pair device with pairing code” in Android settings, "
+                        + "then enter the six-digit code directly in the pairing notification.",
                 14,
                 Color.DKGRAY));
-        content.addView(button("Open Wireless debugging", view -> openWirelessDebugging()));
-        pairCodeInput = input("Six-digit pairing code", "", false);
-        pairCodeInput.setInputType(InputType.TYPE_CLASS_NUMBER);
-        content.addView(pairCodeInput);
-        content.addView(button("Discover, pair & start", view -> pairAndStart()));
+        content.addView(button("Pair from notification", view -> beginNotificationPairing()));
 
         content.addView(section("4. Proxy lifecycle"), margins(0, 20, 0, 4));
         content.addView(button("Refresh ADB & start", view -> startProxy()));
@@ -141,64 +133,42 @@ public final class MainActivity extends Activity {
     }
 
     private void joinNetwork() {
-        String endpoint = value(endpointInput);
         String serial = value(serialInput);
         String joinKey = value(joinKeyInput);
-        String name = value(nameInput);
-        if (endpoint.isEmpty() || serial.isEmpty() || joinKey.isEmpty()) {
-            showStatus("Join endpoint, device serial, and join key are required.");
+        if (serial.isEmpty() || joinKey.isEmpty()) {
+            showStatus("Serial number and join key are required.");
             return;
         }
         runTask("Joining network…", () -> {
-            String peerId = ConfigStore.join(this, endpoint, serial, joinKey, name);
+            String peerId = ConfigStore.join(
+                    this,
+                    ConfigStore.DEFAULT_JOIN_ENDPOINT,
+                    serial,
+                    joinKey,
+                    Build.MANUFACTURER + " " + Build.MODEL);
             runOnUiThread(() -> {
-                joinKeyInput.setText("");
                 refreshPeerId();
                 showStatus("Joined successfully. Peer ID: " + peerId);
             });
         });
     }
 
-    private void pairAndStart() {
-        if (!hasNearbyPermission()) {
-            showStatus("Grant Nearby Wi-Fi permission before discovering Wireless Debugging.");
+    private void beginNotificationPairing() {
+        if (!hasRuntimePermissions()) {
+            showStatus(
+                    "Grant notification and Nearby Wi-Fi permissions before starting pairing.");
             requestRuntimePermissions();
-            return;
-        }
-        String code = value(pairCodeInput).replaceAll("\\s+", "");
-        if (code.isEmpty()) {
-            showStatus("Open the system pairing-code dialog and enter its code first.");
             return;
         }
         if (!ConfigStore.isConfigured(this)) {
             showStatus("Join the libp2p network before pairing.");
             return;
         }
-        runTask("Discovering the pairing endpoint…", () -> {
-            Endpoint pair = WirelessDebugDiscovery.discoverPairing(this, 8_000);
-            if (pair == null) {
-                throw new IllegalStateException(
-                        "Pairing endpoint not found. Keep “Pair device with pairing code” open.");
-            }
-            showStatusFromWorker("Pairing at " + pair.display() + "…");
-            Endpoint debug = WirelessDebugDiscovery.discoverConnect(this, 8_000);
-            if (debug == null) {
-                throw new IllegalStateException(
-                        "Wireless-debug connect endpoint was not found. Ensure its master switch is on.");
-            }
-            String response = NativeBridge.nativePairWireless(
-                    pair.host, pair.port, code, debug.host, debug.port);
-            JSONObject result = new JSONObject(response);
-            if (!result.optBoolean("ok")) {
-                throw new IllegalStateException(result.optString("error", response));
-            }
-            ConfigStore.saveAdbEndpoint(this, debug);
-            runOnUiThread(() -> {
-                pairCodeInput.setText("");
-                showStatus("Paired. Starting proxy to local adbd :" + debug.port + "…");
-                ProxyService.start(this);
-            });
-        });
+        PairingService.start(this);
+        openWirelessDebugging();
+        showStatus(
+                "Pairing search started. Open “Pair device with pairing code”, "
+                        + "then reply to the Android DevTools notification.");
     }
 
     private void startProxy() {
@@ -280,12 +250,6 @@ public final class MainActivity extends Activity {
                         == PackageManager.PERMISSION_GRANTED);
     }
 
-    private boolean hasNearbyPermission() {
-        return Build.VERSION.SDK_INT < 33
-                || checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
-                    == PackageManager.PERMISSION_GRANTED;
-    }
-
     private void requestUnrestrictedBattery() {
         PowerManager powerManager = getSystemService(PowerManager.class);
         if (powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
@@ -336,8 +300,8 @@ public final class MainActivity extends Activity {
             return;
         }
         refreshPermissionStatus();
-        if (hasNearbyPermission()) {
-            showStatus("Discovery permission granted. Allow unrestricted battery use next.");
+        if (hasRuntimePermissions()) {
+            showStatus("Pairing permissions granted. Allow unrestricted battery use next.");
             requestUnrestrictedBattery();
         } else {
             showStatus(

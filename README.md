@@ -59,12 +59,12 @@ requiring Go, while `buildNative` makes their provenance reproducible.
 2. Grant notification and Nearby Wi-Fi permissions, then allow unrestricted
    battery use when Android prompts. These keep discovery and the foreground
    relay connection reliable.
-3. Enter the join endpoint, serial/endpoint name, and join key, then tap
-   **Join network**.
-4. Open **Wireless debugging** and choose **Pair device with pairing code**.
-5. Enter the six-digit code in Android DevTools and tap
-   **Discover, pair & start**. Keep the system pairing dialog open while
-   discovery runs.
+3. Enter only the device serial and join key, then tap **Join network**. The
+   join endpoint and device metadata are supplied internally.
+4. Tap **Pair from notification**, then choose **Pair device with pairing
+   code** in Wireless Debugging settings.
+5. Expand the Android DevTools notification and enter the six-digit code using
+   its inline reply action. Pairing codes are never entered in the activity.
 6. Copy the peer ID shown by the app into the JupyterHub deployment as
    `LIBP2P_AGENT_MOBILE_PEER_ID`.
 
@@ -108,6 +108,9 @@ connection, so no extra libp2p ports are required.
 ## Security notes
 
 - Join configuration and identity keys are kept in app-private preferences.
+- Preferences use the same `edgejoin` file and keys as the AutoJs6 client:
+  `config`, `peer_id`, `private_key`, `public_key`, `join_response`,
+  `join_key`, `serial_number`, `adb_proxy_host`, and `adb_proxy_port`.
 - The sidecar binds the proxied ADB endpoint to Pod loopback by default.
 - Anyone with the device peer ID and a valid identity on the same relay fabric
   may attempt to open the tap protocol. Relay/network admission must therefore
