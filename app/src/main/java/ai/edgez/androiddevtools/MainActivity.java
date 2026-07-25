@@ -83,11 +83,16 @@ public final class MainActivity extends Activity {
         content.addView(permissionStatusText, margins(0, 8, 0, 4));
         content.addView(button("Grant required permissions", view -> requestRequiredPermissions()));
 
-        content.addView(section("2. Join the libp2p network"), margins(0, 20, 0, 4));
+        content.addView(
+                section("2. Get device serial and join key from edgez.ai portal"),
+                margins(0, 20, 0, 4));
         content.addView(text(
                 "Enter the device serial used by JupyterHub and its join key.",
                 14,
                 Color.DKGRAY));
+        content.addView(button(
+                "How to get the serial and join key",
+                view -> startActivity(new Intent(this, JoinKeyTipsActivity.class))));
         String storedSerial = ConfigStore.storedSerial(this);
         String storedJoinKey = ConfigStore.storedJoinKey(this);
         serialInput = input(

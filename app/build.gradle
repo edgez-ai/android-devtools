@@ -1,8 +1,17 @@
 apply plugin: "com.android.application"
 
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { stream ->
+        keystoreProperties.load(stream)
+    }
+}
+
 android {
     namespace "ai.edgez.androiddevtools"
     compileSdk 35
+    ndkVersion "27.0.12077973"
 
     defaultConfig {
         applicationId "ai.edgez.androiddevtools"
@@ -18,8 +27,22 @@ android {
         }
     }
 
+    signingConfigs {
+        release {
+            if (!keystoreProperties.isEmpty()) {
+                keyAlias keystoreProperties["keyAlias"]
+                keyPassword keystoreProperties["keyPassword"]
+                storeFile file(keystoreProperties["storeFile"])
+                storePassword keystoreProperties["storePassword"]
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (!keystoreProperties.isEmpty()) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }

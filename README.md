@@ -59,6 +59,23 @@ Commit both the updated submodule pointer and generated libraries. Keeping the
 generated libraries in this repository lets normal Android builds work without
 requiring Go, while `buildNative` makes their provenance reproducible.
 
+### GitHub release builds
+
+The **Build Android release** workflow runs manually or for tags matching
+`v*`. It builds and uploads:
+
+- `android-devtools-release-unsigned.apk`
+- `android-devtools-release-signed.apk`
+
+Configure these repository secrets before running it:
+
+- `ANDROID_KEYSTORE_BASE64`: the release JKS encoded as a single base64 string
+- `ANDROID_KEYSTORE_PASSWORD`: the store and key password
+
+The keystore must contain the `edgez-android-release` alias, matching the
+Flutter SDK release workflow. Tag builds also attach both APKs to the GitHub
+Release.
+
 ## Device setup
 
 1. Install and open Android DevTools.
@@ -66,7 +83,9 @@ requiring Go, while `buildNative` makes their provenance reproducible.
    battery use when Android prompts. These keep discovery and the foreground
    relay connection reliable.
 3. Enter only the device serial and join key, then tap **Join network**. The
-   join endpoint and device metadata are supplied internally.
+   join endpoint and device metadata are supplied internally. Tap **How to get
+   the serial and join key** for an in-app walkthrough of the edgez.ai Devices
+   page, including the one-time join-key warning.
 4. Tap **Pair from notification**, then choose **Pair device with pairing
    code** in Wireless Debugging settings.
 5. Expand the Android DevTools notification and enter the six-digit code using

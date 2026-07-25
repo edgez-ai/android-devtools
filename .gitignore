@@ -5,3 +5,6 @@ local.properties
 **/build/
 **/.cxx/
 *.iml
+key.properties
+*.jks
+*.keystore
