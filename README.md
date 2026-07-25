@@ -76,6 +76,44 @@ The keystore must contain the `edgez-android-release` alias, matching the
 Flutter SDK release workflow. Tag builds also attach both APKs to the GitHub
 Release.
 
+To create a new Android signing identity, a strong random password, and a
+P-256 SDK signing private scalar, then print the three GitHub Actions
+`NAME=value` entries:
+
+```sh
+./scripts/generate-release-secrets.sh
+```
+
+This creates the following local, Git-ignored files with owner-only
+permissions:
+
+```text
+.local-secrets/android-release-keystore.jks
+.local-secrets/github-actions-secrets.env
+.local-secrets/keystore-info.txt
+```
+
+The environment file contains `ANDROID_KEYSTORE_BASE64`,
+`ANDROID_KEYSTORE_PASSWORD`, and `EDGEZ_SDK_SIGNING_PRIVATE_KEY_HEX`. Running
+the script again prints the existing values instead of silently replacing the
+signing identity. With the GitHub CLI authenticated, install them into a
+repository with:
+
+```sh
+gh secret set -f .local-secrets/github-actions-secrets.env
+```
+
+Alternatively, open **Settings → Secrets and variables → Actions** in the
+GitHub repository, choose **New repository secret**, and copy each value from
+`.local-secrets/github-actions-secrets.env`. Android DevTools uses the two
+`ANDROID_*` secrets; `EDGEZ_SDK_SIGNING_PRIVATE_KEY_HEX` is used by the Flutter
+SDK credential workflow.
+
+Back up `.local-secrets` in a secure password manager or encrypted vault.
+GitHub does not allow secret values to be downloaded later. Never regenerate
+or replace the Android signing key after distributing an APK signed with it;
+future upgrades must use the same keystore.
+
 ## Device setup
 
 1. Install and open Android DevTools.
