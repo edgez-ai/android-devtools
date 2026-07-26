@@ -10,14 +10,11 @@ public final class BootReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (!ConfigStore.isConfigured(context)) {
-            return;
-        }
         try {
-            ProxyService.start(context);
+            boolean started = ProxyService.startIfConfigured(context);
+            Log.i(TAG, "Auto-start after " + intent.getAction() + ": started=" + started);
         } catch (RuntimeException exception) {
             Log.w(TAG, "Unable to restart proxy after " + intent.getAction(), exception);
         }
     }
 }
-

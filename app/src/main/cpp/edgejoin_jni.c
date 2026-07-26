@@ -7,9 +7,11 @@
 typedef char *(*create_identity_fn)(const char *);
 typedef char *(*start_client_fn)(const char *);
 typedef char *(*stop_client_fn)(void);
+typedef char *(*start_scrcpy_fn)(void);
 typedef char *(*provide_scrcpy_jar_fn)(const char *, int);
 typedef char *(*pair_wireless_fn)(const char *, int, const char *, const char *, const char *, int);
 typedef char *(*set_adb_target_fn)(const char *, int);
+typedef char *(*set_adb_key_path_fn)(const char *);
 typedef void (*free_result_fn)(char *);
 typedef void (*adb_unreachable_cb)(void);
 typedef void (*register_adb_unreachable_fn)(adb_unreachable_cb);
@@ -80,6 +82,52 @@ static jstring copy_result(JNIEnv *env, char *result, free_result_fn free_result
 }
 
 JNIEXPORT jstring JNICALL
+Java_ai_edgez_androiddevtools_NativeBridge_nativeSetAdbKeyPath(
+        JNIEnv *env, jclass clazz, jstring path) {
+    (void) clazz;
+    if (path == NULL) {
+        return error_result(
+                env,
+                "{\"ok\":false,\"status_code\":0,\"error\":\"ADB key path is required\"}");
+    }
+
+    const char *value = (*env)->GetStringUTFChars(env, path, NULL);
+    if (value == NULL || value[0] == '\0') {
+        if (value != NULL) {
+            (*env)->ReleaseStringUTFChars(env, path, value);
+        }
+        return error_result(
+                env,
+                "{\"ok\":false,\"status_code\":0,\"error\":\"ADB key path is empty\"}");
+    }
+
+    void *handle = open_library();
+    if (handle == NULL) {
+        (*env)->ReleaseStringUTFChars(env, path, value);
+        return error_result(
+                env,
+                "{\"ok\":false,\"status_code\":0,\"error\":\"failed to load libedgejoin.so\"}");
+    }
+    set_adb_key_path_fn set_key_path =
+            (set_adb_key_path_fn) dlsym(handle, "EdgeSetAdbKeyPath");
+    free_result_fn free_result = (free_result_fn) dlsym(handle, "EdgeJoinFree");
+    if (set_key_path == NULL || free_result == NULL) {
+        (*env)->ReleaseStringUTFChars(env, path, value);
+        dlclose(handle);
+        return error_result(
+                env,
+                "{\"ok\":false,\"status_code\":0,\"error\":\"missing ADB key path symbols\"}");
+    }
+
+    char *result = set_key_path(value);
+    (*env)->ReleaseStringUTFChars(env, path, value);
+    jstring output = copy_result(env, result, free_result);
+    // Retain this initial dlopen reference for the process lifetime so the Go
+    // override and cached key state survive later per-call dlopen/dlclose pairs.
+    return output;
+}
+
+JNIEXPORT jstring JNICALL
 Java_ai_edgez_androiddevtools_NativeBridge_nativeCreateIdentity(
         JNIEnv *env, jclass clazz, jstring name) {
     (void) clazz;
@@ -143,6 +191,25 @@ Java_ai_edgez_androiddevtools_NativeBridge_nativeStopClient(
         return error_result(env, "{\"ok\":false,\"status_code\":0,\"error\":\"missing stop symbols\"}");
     }
     jstring output = copy_result(env, stop_client(), free_result);
+    dlclose(handle);
+    return output;
+}
+
+JNIEXPORT jstring JNICALL
+Java_ai_edgez_androiddevtools_NativeBridge_nativeStartScrcpy(
+        JNIEnv *env, jclass clazz) {
+    (void) clazz;
+    void *handle = open_library();
+    if (handle == NULL) {
+        return error_result(env, "{\"ok\":false,\"status_code\":0,\"error\":\"failed to load libedgejoin.so\"}");
+    }
+    start_scrcpy_fn start_scrcpy = (start_scrcpy_fn) dlsym(handle, "EdgeStartScrcpy");
+    free_result_fn free_result = (free_result_fn) dlsym(handle, "EdgeJoinFree");
+    if (start_scrcpy == NULL || free_result == NULL) {
+        dlclose(handle);
+        return error_result(env, "{\"ok\":false,\"status_code\":0,\"error\":\"missing scrcpy start symbols\"}");
+    }
+    jstring output = copy_result(env, start_scrcpy(), free_result);
     dlclose(handle);
     return output;
 }

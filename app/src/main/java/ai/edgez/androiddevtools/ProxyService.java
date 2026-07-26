@@ -10,12 +10,14 @@ import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
+import android.provider.Settings;
 import android.util.Log;
 
 import org.json.JSONObject;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class ProxyService extends Service {
     static final String ACTION_START = "ai.edgez.androiddevtools.START";
@@ -23,6 +25,8 @@ public final class ProxyService extends Service {
     private static final String TAG = "AndroidDevTools";
     private static final String CHANNEL_ID = "adb_proxy";
     private static final int NOTIFICATION_ID = 4101;
+    private static final long WIRELESS_DEBUG_PROMPT_INTERVAL_MS = 30_000L;
+    private static final AtomicLong LAST_WIRELESS_DEBUG_PROMPT_MS = new AtomicLong();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private volatile boolean stopping;
 
@@ -77,15 +81,22 @@ public final class ProxyService extends Service {
             return;
         }
         try {
+            if (!ConfigStore.isConfigured(this)) {
+                Log.i(TAG, "No stored libp2p config; stopping proxy service");
+                stopSelf();
+                return;
+            }
+
+            Log.i(TAG, "Libp2p startup: loading stored config");
+            if (!isWirelessDebugEnabled()) {
+                Log.i(TAG, "Wireless Debugging is disabled; requesting enable dialog");
+                requestWirelessDebugPrompt(this);
+            }
             Endpoint endpoint = WirelessDebugDiscovery.discoverConnect(this, 5_000);
             if (endpoint != null) {
                 ConfigStore.saveAdbEndpoint(this, endpoint);
             } else {
                 endpoint = ConfigStore.loadAdbEndpoint(this);
-            }
-            if (endpoint == null) {
-                updateNotification("Enable Wireless debugging, then refresh in the app");
-                return;
             }
 
             String response = NativeBridge.nativeStartClient(ConfigStore.clientConfig(this));
@@ -93,13 +104,45 @@ public final class ProxyService extends Service {
             if (!result.optBoolean("ok")) {
                 throw new IllegalStateException(result.optString("error", response));
             }
-            updateNotification(
-                    "ADB proxy online • " + ConfigStore.peerId(this)
-                            + " • local adbd :" + endpoint.port);
+            String state = result.optString("state", "running");
+            Log.i(
+                    TAG,
+                    "Libp2p startup complete: state=" + state
+                            + " peer=" + result.optString("peer_id", ConfigStore.peerId(this))
+                            + " relayBooked=" + result.optBoolean("relay_booked"));
+            if (endpoint != null) {
+                startLocalScrcpy();
+            }
+            if (endpoint == null) {
+                updateNotification(
+                        "Libp2p online • " + ConfigStore.peerId(this)
+                                + " • enable Wireless Debugging for ADB");
+            } else {
+                updateNotification(
+                        "ADB proxy online • " + ConfigStore.peerId(this)
+                                + " • local adbd :" + endpoint.port);
+            }
         } catch (Throwable throwable) {
             Log.e(TAG, "Unable to start proxy", throwable);
             updateNotification("Proxy error: " + safeMessage(throwable));
         }
+    }
+
+    private boolean isWirelessDebugEnabled() {
+        try {
+            return Settings.Global.getInt(getContentResolver(), "adb_wifi_enabled", 0) == 1;
+        } catch (RuntimeException exception) {
+            Log.w(TAG, "Unable to read Wireless Debugging state", exception);
+            return false;
+        }
+    }
+
+    static boolean startIfConfigured(Context context) {
+        if (!ConfigStore.isConfigured(context)) {
+            return false;
+        }
+        start(context);
+        return true;
     }
 
     static void start(Context context) {
@@ -116,13 +159,46 @@ public final class ProxyService extends Service {
             Endpoint endpoint = WirelessDebugDiscovery.discoverConnect(context, 8_000);
             if (endpoint == null) {
                 Log.w(TAG, "Native reconnect requested but Wireless Debugging was not discovered");
+                requestWirelessDebugPrompt(context);
                 return;
             }
             ConfigStore.saveAdbEndpoint(context, endpoint);
             String response = NativeBridge.nativeSetAdbProxyTarget("127.0.0.1", endpoint.port);
             Log.i(TAG, "Updated native ADB target to " + endpoint.display() + ": " + response);
+            startLocalScrcpy();
         }, "adb-target-refresh");
         refreshThread.start();
+    }
+
+    private static void startLocalScrcpy() {
+        try {
+            String response = NativeBridge.nativeStartScrcpy();
+            JSONObject result = new JSONObject(response);
+            if (result.optBoolean("ok")) {
+                Log.i(TAG, "Local scrcpy startup complete: " + response);
+            } else {
+                Log.w(
+                        TAG,
+                        "Local scrcpy startup deferred: "
+                                + result.optString("error", response));
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "Local scrcpy startup failed", throwable);
+        }
+    }
+
+    private static void requestWirelessDebugPrompt(Context context) {
+        long now = android.os.SystemClock.elapsedRealtime();
+        long previous = LAST_WIRELESS_DEBUG_PROMPT_MS.get();
+        if ((previous != 0L && now - previous < WIRELESS_DEBUG_PROMPT_INTERVAL_MS)
+                || !LAST_WIRELESS_DEBUG_PROMPT_MS.compareAndSet(previous, now)) {
+            return;
+        }
+        try {
+            MainActivity.requestWirelessDebugPrompt(context.getApplicationContext());
+        } catch (RuntimeException exception) {
+            Log.w(TAG, "Unable to show Wireless Debugging prompt", exception);
+        }
     }
 
     private void createNotificationChannel() {

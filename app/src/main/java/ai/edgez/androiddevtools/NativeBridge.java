@@ -8,12 +8,15 @@ import androidx.annotation.Keep;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.InputStream;
 
 public final class NativeBridge {
     private static final String TAG = "AndroidDevTools";
+    private static final Object RUNTIME_LOCK = new Object();
     private static final Object SCRCPY_LOCK = new Object();
     private static volatile Context applicationContext;
+    private static volatile boolean runtimePathsConfigured;
     private static volatile boolean scrcpyServerProvided;
 
     static {
@@ -25,8 +28,11 @@ public final class NativeBridge {
 
     static void initialize(Context context) {
         applicationContext = context.getApplicationContext();
+        configureRuntimePaths(applicationContext);
         provideScrcpyServer(applicationContext);
     }
+
+    static native String nativeSetAdbKeyPath(String path);
 
     static native String nativeCreateIdentity(String name);
 
@@ -34,12 +40,52 @@ public final class NativeBridge {
 
     static native String nativeStopClient();
 
+    static native String nativeStartScrcpy();
+
     static native String nativeProvideScrcpyJar(byte[] bytes);
 
     static native String nativePairWireless(
             String pairHost, int pairPort, String code, String debugHost, int debugPort);
 
     static native String nativeSetAdbProxyTarget(String host, int port);
+
+    private static void configureRuntimePaths(Context context) {
+        if (runtimePathsConfigured) {
+            return;
+        }
+        synchronized (RUNTIME_LOCK) {
+            if (runtimePathsConfigured) {
+                return;
+            }
+
+            File adbDirectory = new File(context.getFilesDir(), "adb");
+            if ((!adbDirectory.isDirectory() && !adbDirectory.mkdirs())
+                    || !adbDirectory.canRead()
+                    || !adbDirectory.canWrite()) {
+                throw new IllegalStateException(
+                        "Unable to prepare app-private ADB key directory: "
+                                + adbDirectory.getAbsolutePath());
+            }
+
+            File adbKey = new File(adbDirectory, "adbkey");
+            String response = nativeSetAdbKeyPath(adbKey.getAbsolutePath());
+            try {
+                JSONObject result = new JSONObject(response);
+                if (!result.optBoolean("ok")) {
+                    throw new IllegalStateException(result.optString("error", response));
+                }
+            } catch (IllegalStateException exception) {
+                throw exception;
+            } catch (Throwable throwable) {
+                throw new IllegalStateException(
+                        "Unable to configure app-private ADB key path: " + response,
+                        throwable);
+            }
+
+            runtimePathsConfigured = true;
+            Log.i(TAG, "Native ADB key path configured at " + adbKey.getAbsolutePath());
+        }
+    }
 
     private static void provideScrcpyServer(Context context) {
         if (scrcpyServerProvided) {

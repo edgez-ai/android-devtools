@@ -2,7 +2,9 @@ package ai.edgez.androiddevtools;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -28,7 +30,10 @@ import java.util.Locale;
 
 public final class MainActivity extends Activity {
     private static final int PERMISSION_REQUEST = 10;
+    private static final String EXTRA_PROMPT_WIRELESS_DEBUG =
+            "ai.edgez.androiddevtools.extra.PROMPT_WIRELESS_DEBUG";
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private AlertDialog wirelessDebugDialog;
     private EditText serialInput;
     private EditText joinKeyInput;
     private TextView peerIdText;
@@ -51,10 +56,22 @@ public final class MainActivity extends Activity {
         if (permissionStatusText != null) {
             refreshPermissionStatus();
         }
+        maybeShowWirelessDebugDialog(consumeWirelessDebugPrompt());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        maybeShowWirelessDebugDialog(consumeWirelessDebugPrompt());
     }
 
     @Override
     protected void onDestroy() {
+        if (wirelessDebugDialog != null) {
+            wirelessDebugDialog.dismiss();
+            wirelessDebugDialog = null;
+        }
         executor.shutdownNow();
         super.onDestroy();
     }
@@ -153,7 +170,10 @@ public final class MainActivity extends Activity {
                     Build.MANUFACTURER + " " + Build.MODEL);
             runOnUiThread(() -> {
                 refreshPeerId();
-                showStatus("Joined successfully. Peer ID: " + peerId);
+                ProxyService.start(this);
+                showStatus(
+                        "Joined successfully. Libp2p is starting in the background. Peer ID: "
+                                + peerId);
             });
         });
     }
@@ -192,6 +212,65 @@ public final class MainActivity extends Activity {
         } catch (ActivityNotFoundException exception) {
             startActivity(new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS));
         }
+    }
+
+    private boolean consumeWirelessDebugPrompt() {
+        Intent intent = getIntent();
+        if (intent == null) {
+            return false;
+        }
+        boolean requested = intent.getBooleanExtra(EXTRA_PROMPT_WIRELESS_DEBUG, false);
+        if (requested) {
+            intent.removeExtra(EXTRA_PROMPT_WIRELESS_DEBUG);
+        }
+        return requested;
+    }
+
+    private void maybeShowWirelessDebugDialog(boolean force) {
+        if (!ConfigStore.isConfigured(this)) {
+            return;
+        }
+        if (!hasRuntimePermissions()) {
+            return;
+        }
+        if (!force && isWirelessDebugEnabled()) {
+            return;
+        }
+        if (isFinishing() || isDestroyed()
+                || (wirelessDebugDialog != null && wirelessDebugDialog.isShowing())) {
+            return;
+        }
+
+        String message = isWirelessDebugEnabled()
+                ? "Wireless Debugging is enabled, but its ADB endpoint was not found. "
+                    + "Open Wireless Debugging and choose “Pair device with pairing code”."
+                : "Turn on Wireless Debugging, then choose “Pair device with pairing code”. "
+                    + "Keep Settings open until Android DevTools finds the pairing endpoint.";
+        wirelessDebugDialog = new AlertDialog.Builder(this)
+                .setTitle("Wireless Debugging required")
+                .setMessage(message)
+                .setPositiveButton("Open Wireless Debugging", (dialog, which) ->
+                        beginNotificationPairing())
+                .setNegativeButton("Later", null)
+                .setOnDismissListener(dialog -> wirelessDebugDialog = null)
+                .show();
+    }
+
+    private boolean isWirelessDebugEnabled() {
+        try {
+            return Settings.Global.getInt(getContentResolver(), "adb_wifi_enabled", 0) == 1;
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    static void requestWirelessDebugPrompt(Context context) {
+        Intent intent = new Intent(context, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(EXTRA_PROMPT_WIRELESS_DEBUG, true);
+        context.startActivity(intent);
     }
 
     private void runTask(String initialStatus, ThrowingRunnable task) {

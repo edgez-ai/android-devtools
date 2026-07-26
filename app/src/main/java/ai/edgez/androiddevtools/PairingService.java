@@ -131,30 +131,62 @@ public final class PairingService extends Service {
                 return;
             }
             try {
-                Endpoint discovered = WirelessDebugDiscovery.discoverConnect(this, 8_000);
-                if (discovered == null) {
-                    throw new IllegalStateException(
-                            "Wireless Debugging connect endpoint was not found.");
-                }
-
-                // Match AutoJs6: the mDNS result supplies the dynamic port, while
-                // the device-local authenticated ADB connection uses loopback.
-                Endpoint localAdb = new Endpoint("127.0.0.1", discovered.port);
+                // A device with a new, untrusted key may advertise only the
+                // pairing service while the pairing-code dialog is open. Pair
+                // first, then wait for Android to publish the connect service.
                 String response = NativeBridge.nativePairWireless(
-                        pairHost, pairPort, code, localAdb.host, localAdb.port);
+                        pairHost, pairPort, code, "", 0);
                 JSONObject result = new JSONObject(response);
                 if (!result.optBoolean("ok")) {
                     throw new IllegalStateException(result.optString("error", response));
                 }
 
-                ConfigStore.saveAdbEndpoint(this, localAdb);
+                Endpoint discovered = discoverConnectAfterPairing();
+                Endpoint localAdb = discovered == null
+                        ? ConfigStore.loadAdbEndpoint(this)
+                        : new Endpoint("127.0.0.1", discovered.port);
+                if (localAdb != null) {
+                    // The mDNS result supplies the dynamic port, while the
+                    // device-local authenticated ADB connection uses loopback.
+                    // Samsung may stop advertising the connect service while
+                    // the local port remains valid, so retain the stored port.
+                    ConfigStore.saveAdbEndpoint(this, localAdb);
+                    String targetResponse = NativeBridge.nativeSetAdbProxyTarget(
+                            localAdb.host, localAdb.port);
+                    Log.i(
+                            TAG,
+                            (discovered == null
+                                    ? "Using stored Wireless Debugging connect endpoint: "
+                                    : "Wireless connect endpoint found after pairing: ")
+                                    + localAdb.display() + " target=" + targetResponse);
+                } else {
+                    Log.w(
+                            TAG,
+                            "Wireless pairing succeeded; connect endpoint is not advertised yet");
+                }
+
                 ProxyService.start(this);
-                postResult("Wireless Debugging paired. The libp2p ADB proxy is starting.", false);
+                postResult(
+                        localAdb == null
+                                ? "Wireless Debugging paired. Waiting for its connect endpoint."
+                                : "Wireless Debugging paired. The libp2p ADB proxy is starting.",
+                        false);
             } catch (Throwable throwable) {
                 Log.w(TAG, "Notification pairing failed", throwable);
                 postResult("Pairing failed: " + safeMessage(throwable), true);
             }
         });
+    }
+
+    private Endpoint discoverConnectAfterPairing() {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            Endpoint endpoint = WirelessDebugDiscovery.discoverConnect(this, 8_000);
+            if (endpoint != null) {
+                return endpoint;
+            }
+            Log.i(TAG, "Waiting for Wireless Debugging connect endpoint, attempt=" + attempt);
+        }
+        return null;
     }
 
     private Notification buildSearchingNotification() {

@@ -15,6 +15,11 @@ branch, without the AutoJs runtime. It:
   bootstraps it when libp2p target port `8886` is requested;
 - keeps the proxy alive in a foreground service and restarts it after boot.
 
+Like AutoJs6, the app starts the libp2p foreground client automatically whenever
+stored join configuration exists. Libp2p startup does not wait for Wireless
+Debugging discovery; the local ADB target is discovered and refreshed
+independently.
+
 ## Build
 
 The native `libedgejoin.so` files are copied from AutoJs6 commit
@@ -176,6 +181,8 @@ push `/data/local/tmp/scrcpy-server.jar`, launch
 ## Security notes
 
 - Join configuration and identity keys are kept in app-private preferences.
+- The Wireless Debugging RSA key and TLS certificate are stored under the
+  app-private `files/adb/adbkey` path; no shared-storage permission is needed.
 - Preferences use the same `edgejoin` file and keys as the AutoJs6 client:
   `config`, `peer_id`, `private_key`, `public_key`, `join_response`,
   `join_key`, `serial_number`, `adb_proxy_host`, and `adb_proxy_port`.

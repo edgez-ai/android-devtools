@@ -130,8 +130,10 @@ extern char* EdgeStopClient(void);
 extern void EdgeRegisterAdbUnreachableCallback(edge_adb_unreachable_cb cb);
 extern void EdgeRegisterScriptExecuteCallback(edge_script_execute_cb cb);
 extern char* EdgeSetAdbProxyTarget(char* host, int port);
+extern char* EdgeSetAdbKeyPath(char* path);
 extern void EdgeJoinFree(char* ptr);
 extern char* EdgeProvideScrcpyJar(char* data, int length);
+extern char* EdgeStartScrcpy(void);
 extern char* EdgePairWireless(char* host, int port, char* code, char* packageName, char* debugHost, int debugPort);
 extern char* EdgeProvisionDeviceOwner(char* debugHost, int debugPort, char* packageName);
 
