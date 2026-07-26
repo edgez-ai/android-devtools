@@ -43,7 +43,6 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        NativeBridge.initialize(this);
         setContentView(buildContent());
         refreshPeerId();
         refreshPermissionStatus();

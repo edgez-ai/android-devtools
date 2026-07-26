@@ -17,6 +17,7 @@ import org.json.JSONObject;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class ProxyService extends Service {
@@ -28,6 +29,7 @@ public final class ProxyService extends Service {
     private static final long WIRELESS_DEBUG_PROMPT_INTERVAL_MS = 30_000L;
     private static final AtomicLong LAST_WIRELESS_DEBUG_PROMPT_MS = new AtomicLong();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final AtomicBoolean startScheduled = new AtomicBoolean();
     private volatile boolean stopping;
 
     @Override
@@ -49,25 +51,27 @@ public final class ProxyService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
-            stopping = true;
-            stopSelf();
+            requestStop();
             return START_NOT_STICKY;
         }
-        executor.execute(this::startProxy);
+        if (!stopping && startScheduled.compareAndSet(false, true)) {
+            executor.execute(() -> {
+                try {
+                    startProxy();
+                } finally {
+                    startScheduled.set(false);
+                }
+            });
+        }
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
         stopping = true;
-        executor.execute(() -> {
-            try {
-                NativeBridge.nativeStopClient();
-            } catch (Throwable throwable) {
-                Log.w(TAG, "Unable to stop native client", throwable);
-            }
-        });
-        executor.shutdown();
+        executor.shutdownNow();
+        stopNativeClient();
+        stopForeground(STOP_FOREGROUND_REMOVE);
         super.onDestroy();
     }
 
@@ -99,10 +103,17 @@ public final class ProxyService extends Service {
                 endpoint = ConfigStore.loadAdbEndpoint(this);
             }
 
+            if (stopping || Thread.currentThread().isInterrupted()) {
+                return;
+            }
             String response = NativeBridge.nativeStartClient(ConfigStore.clientConfig(this));
             JSONObject result = new JSONObject(response);
             if (!result.optBoolean("ok")) {
                 throw new IllegalStateException(result.optString("error", response));
+            }
+            if (stopping || Thread.currentThread().isInterrupted()) {
+                stopNativeClient();
+                return;
             }
             String state = result.optString("state", "running");
             Log.i(
@@ -125,6 +136,27 @@ public final class ProxyService extends Service {
         } catch (Throwable throwable) {
             Log.e(TAG, "Unable to start proxy", throwable);
             updateNotification("Proxy error: " + safeMessage(throwable));
+        }
+    }
+
+    private void requestStop() {
+        if (stopping) {
+            return;
+        }
+        stopping = true;
+        updateNotification("Stopping libp2p ADB proxy…");
+        executor.execute(() -> {
+            stopNativeClient();
+            stopSelf();
+        });
+    }
+
+    private void stopNativeClient() {
+        try {
+            String response = NativeBridge.nativeStopClient();
+            Log.i(TAG, "Libp2p client stopped: " + response);
+        } catch (Throwable throwable) {
+            Log.w(TAG, "Unable to stop native client", throwable);
         }
     }
 

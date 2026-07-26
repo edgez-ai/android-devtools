@@ -10,7 +10,6 @@ public final class AndroidDevToolsApp extends Application {
     public void onCreate() {
         super.onCreate();
         try {
-            NativeBridge.initialize(this);
             boolean started = ProxyService.startIfConfigured(this);
             Log.i(TAG, "Application startup: libp2p service started=" + started);
         } catch (Throwable throwable) {
