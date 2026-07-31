@@ -3,6 +3,8 @@ package ai.edgez.androiddevtools;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build;
+import android.util.Base64;
+import android.util.Log;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -18,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 
 final class ConfigStore {
     static final String DEFAULT_JOIN_ENDPOINT = "https://www.edgez.ai/api/join";
+    private static final String TAG = "AndroidDevTools";
     private static final String PREFS = "edgejoin";
     private static final String KEY_CONFIG = "config";
     private static final String KEY_PEER_ID = "peer_id";
@@ -38,11 +41,7 @@ final class ConfigStore {
             String serial,
             String joinKey,
             String name) throws IOException, JSONException {
-        String identityText = NativeBridge.nativeCreateIdentity(name);
-        JSONObject identity = new JSONObject(identityText);
-        if (!identity.optBoolean("ok")) {
-            throw new IOException(identity.optString("error", "identity generation failed"));
-        }
+        JSONObject identity = loadOrCreateIdentity(context, name);
 
         JSONObject payload = new JSONObject();
         payload.put("id", identity.getString("peer_id"));
@@ -50,7 +49,7 @@ final class ConfigStore {
         payload.put("serial_number", serial);
         payload.put("platform", "android");
         payload.put("arch", Build.SUPPORTED_ABIS.length == 0 ? "unknown" : Build.SUPPORTED_ABIS[0]);
-        payload.put("version", "android-devtools/0.1.0");
+        payload.put("version", "android-devtools/0.2.0");
         payload.put("name", name);
         payload.put("port", 22);
         payload.put("username", "android");
@@ -92,6 +91,81 @@ final class ConfigStore {
                 .putString(KEY_SERIAL, serial)
                 .apply();
         return identity.getString("peer_id");
+    }
+
+    private static JSONObject loadOrCreateIdentity(Context context, String name)
+            throws IOException, JSONException {
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String peerId = trimmed(preferences.getString(KEY_PEER_ID, ""));
+        String privateKey = trimmed(preferences.getString(KEY_PRIVATE_KEY, ""));
+        String publicKey = trimmed(preferences.getString(KEY_PUBLIC_KEY, ""));
+
+        // Older installations may have the private key only in the assembled
+        // client config. Recover it instead of changing the device identity.
+        if (privateKey.isEmpty()) {
+            String storedConfig = preferences.getString(KEY_CONFIG, "");
+            if (storedConfig != null && !storedConfig.trim().isEmpty()) {
+                try {
+                    privateKey = trimmed(new JSONObject(storedConfig).optString("key", ""));
+                } catch (JSONException exception) {
+                    Log.w(TAG, "Stored libp2p config is invalid; cannot recover identity", exception);
+                }
+            }
+        }
+
+        if (!peerId.isEmpty() && isValidEncodedKey(privateKey)) {
+            preferences.edit()
+                    .putString(KEY_PRIVATE_KEY, privateKey)
+                    .apply();
+            JSONObject identity = new JSONObject();
+            identity.put("ok", true);
+            identity.put("peer_id", peerId);
+            identity.put("private_key", privateKey);
+            identity.put("public_key", publicKey);
+            Log.i(TAG, "Reusing stored libp2p identity peer=" + peerId);
+            return identity;
+        }
+
+        String identityText = NativeBridge.nativeCreateIdentity(name);
+        JSONObject identity = new JSONObject(identityText);
+        if (!identity.optBoolean("ok")) {
+            throw new IOException(identity.optString("error", "identity generation failed"));
+        }
+
+        peerId = identity.getString("peer_id");
+        privateKey = identity.getString("private_key");
+        publicKey = identity.optString("public_key", "");
+        if (!isValidEncodedKey(privateKey)) {
+            throw new IOException("native identity generation returned an invalid private key");
+        }
+
+        // Save before contacting the join service. A timeout or rejected join
+        // must not cause the next attempt to generate a different peer ID.
+        boolean saved = preferences.edit()
+                .putString(KEY_PEER_ID, peerId)
+                .putString(KEY_PRIVATE_KEY, privateKey)
+                .putString(KEY_PUBLIC_KEY, publicKey)
+                .commit();
+        if (!saved) {
+            throw new IOException("unable to persist generated libp2p identity");
+        }
+        Log.i(TAG, "Generated and persisted new libp2p identity peer=" + peerId);
+        return identity;
+    }
+
+    private static boolean isValidEncodedKey(String encoded) {
+        if (encoded.isEmpty()) {
+            return false;
+        }
+        try {
+            return Base64.decode(encoded, Base64.DEFAULT).length >= 32;
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
+    }
+
+    private static String trimmed(String value) {
+        return value == null ? "" : value.trim();
     }
 
     static void saveAdbEndpoint(Context context, Endpoint endpoint) {
