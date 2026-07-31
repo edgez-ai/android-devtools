@@ -259,7 +259,8 @@ public final class ProxyService extends Service {
     private void createNotificationChannel() {
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID, "Remote ADB proxy", NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription("Keeps the libp2p ADB tunnel available to the Flutter workspace");
+        channel.setDescription(
+                "Keeps the libp2p ADB tunnel available to Flutter and React Native workspaces");
         getSystemService(NotificationManager.class).createNotificationChannel(channel);
     }
 

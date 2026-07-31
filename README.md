@@ -1,7 +1,7 @@
 # Android DevTools
 
-Android companion for using a physical device from a remote Flutter/JupyterHub
-workspace through [`adb-sidecar`](../adb-sidecar).
+Android companion for using a physical device from a remote Flutter, React
+Native, or JupyterHub workspace through [`adb-sidecar`](../adb-sidecar).
 
 The app runs the same native libp2p ADB proxy used by the AutoJs6 `libp2p`
 branch, without the AutoJs runtime. It:
@@ -16,6 +16,8 @@ branch, without the AutoJs runtime. It:
   listener);
 - supplies AutoJs6's scrcpy server asset to the native client and lazily
   bootstraps it when libp2p target port `8886` is requested;
+- detects and opens the dedicated Expo Go app, or links to Expo's official
+  version picker when it is not installed;
 - keeps the proxy alive in a foreground service and restarts it after boot.
 
 Like AutoJs6, the app starts the libp2p foreground client automatically whenever
@@ -159,6 +161,12 @@ abstract Unix socket; the native client carries those frames on the raw
 libp2p stream. Only `adb-sidecar` provides a loopback TCP endpoint, because
 the Linux `usbip` client expects TCP.
 
+For hot-plug use, prefer `USBIP_REMOTE_BUSIDS=all`. Android DevTools closes the
+active USB/IP session as soon as it receives a detach broadcast, and requests
+permission again when a device is reconnected. Android may assign a different
+bus/device address after every connection, so a fixed bus ID is intended only
+for stable, always-connected hardware.
+
 The server implements USB/IP control, bulk, and interrupt transfers, which
 covers CDC/USB serial and common debug probes. Isochronous transfers are
 rejected. Flashing and debugging are latency-sensitive, so use conservative
@@ -204,6 +212,41 @@ flutter run -d 127.0.0.1:5555
 Once `flutter run` is attached, use `r` for hot reload and `R` for hot
 restart. The VM service and all forwarded ports travel inside the same ADB
 connection, so no extra libp2p ports are required.
+
+### React Native / Expo Go
+
+Expo Go remains a dedicated Android app so that its version can match the
+project's Expo SDK. In Android DevTools, tap **Install Expo Go** to open Expo's
+official Android version picker, or **Open Expo Go** when it is already
+installed.
+
+Expo CLI in the remote IDE creates `adb reverse tcp:8081 tcp:8081` over the
+libp2p-backed ADB connection. On Android, `adbd` accepts the connection to
+device `localhost:8081` and carries it back to Metro on the remote IDE's
+`localhost:8081`. No public Metro listener, Expo tunnel, device Wi-Fi route,
+second libp2p target port, or Expo-specific sidecar process is required.
+
+From an Expo project in the remote IDE:
+
+```sh
+adb connect 127.0.0.1:5555
+npx expo start --host localhost --port 8081 --android
+```
+
+Expo CLI detects the proxied Android device, creates the reverse mapping,
+installs the Expo Go version that matches the project when necessary, and
+opens the computed project URL. If Expo Go is already installed but does not
+open automatically:
+
+```sh
+adb -s 127.0.0.1:5555 shell am start \
+  -a android.intent.action.VIEW \
+  -d exp://127.0.0.1:8081
+```
+
+For a non-Expo React Native app or an Expo development build, use the same ADB
+device with `npx react-native run-android` or `npx expo run:android`; ADB reverse
+continues to carry Metro on port 8081.
 
 For USB, the sidecar—not Jupyter—runs `usbip attach` against the local
 `127.0.0.1:3240` libp2p bridge. The Kubernetes node must provide `vhci-hcd`,

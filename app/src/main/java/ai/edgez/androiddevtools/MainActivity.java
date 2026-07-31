@@ -34,6 +34,7 @@ public final class MainActivity extends Activity {
             "ai.edgez.androiddevtools.extra.PROMPT_WIRELESS_DEBUG";
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private AlertDialog wirelessDebugDialog;
+    private Button expoGoButton;
     private EditText serialInput;
     private EditText joinKeyInput;
     private TextView peerIdText;
@@ -54,6 +55,10 @@ public final class MainActivity extends Activity {
         super.onResume();
         if (permissionStatusText != null) {
             refreshPermissionStatus();
+        }
+        if (expoGoButton != null) {
+            expoGoButton.setText(
+                    ExpoGoLauncher.isInstalled(this) ? "Open Expo Go" : "Install Expo Go");
         }
         maybeShowWirelessDebugDialog(consumeWirelessDebugPrompt());
     }
@@ -84,7 +89,7 @@ public final class MainActivity extends Activity {
         TextView title = text("Android DevTools", 28, Color.rgb(13, 71, 161));
         content.addView(title);
         TextView subtitle = text(
-                "Physical-device deploy and Flutter hot reload through adb-sidecar",
+                "Flutter and React Native on a physical device through adb-sidecar",
                 15,
                 Color.DKGRAY);
         content.addView(subtitle, margins(0, 4, 0, 20));
@@ -132,7 +137,18 @@ public final class MainActivity extends Activity {
                 Color.DKGRAY));
         content.addView(button("Pair from notification", view -> beginNotificationPairing()));
 
-        content.addView(section("4. Proxy lifecycle"), margins(0, 20, 0, 4));
+        content.addView(section("4. Expo Go"), margins(0, 20, 0, 4));
+        content.addView(text(
+                "Expo Go runs as a dedicated app. Metro on the remote IDE reaches it through "
+                        + "ADB reverse over the existing libp2p tunnel.",
+                14,
+                Color.DKGRAY));
+        expoGoButton = button(
+                ExpoGoLauncher.isInstalled(this) ? "Open Expo Go" : "Install Expo Go",
+                view -> showStatus(ExpoGoLauncher.openOrInstall(this)));
+        content.addView(expoGoButton);
+
+        content.addView(section("5. Proxy lifecycle"), margins(0, 20, 0, 4));
         content.addView(button("Refresh ADB & start", view -> startProxy()));
         content.addView(button("Stop proxy", view -> {
             ProxyService.stop(this);

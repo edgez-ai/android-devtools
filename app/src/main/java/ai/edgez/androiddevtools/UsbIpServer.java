@@ -72,6 +72,7 @@ final class UsbIpServer implements AutoCloseable {
     private final UsbManager usbManager;
     private final ExecutorService clients = Executors.newCachedThreadPool();
     private final Set<LocalSocket> sockets = ConcurrentHashMap.newKeySet();
+    private final Set<DeviceSession> deviceSessions = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean running = new AtomicBoolean();
     private volatile LocalServerSocket listener;
 
@@ -86,9 +87,11 @@ final class UsbIpServer implements AutoCloseable {
                 Log.i(TAG, "USB/IP permission device=" + deviceLabel(device)
                         + " granted=" + granted);
             } else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
+                Log.i(TAG, "USB/IP device attached: " + deviceLabel(device));
                 requestPermission(device);
             } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
                 Log.i(TAG, "USB/IP device detached: " + deviceLabel(device));
+                closeSessions(device);
             }
         }
     };
@@ -177,15 +180,20 @@ final class UsbIpServer implements AutoCloseable {
                     }
                     DeviceSession session = new DeviceSession(
                             socket, input, output, device, connection);
-                    if (!session.prepare()) {
-                        connection.close();
-                        writeCommon(output, version, OP_REP_IMPORT, ST_NA);
-                        continue;
+                    deviceSessions.add(session);
+                    try {
+                        if (!session.prepare()) {
+                            writeCommon(output, version, OP_REP_IMPORT, ST_NA);
+                            continue;
+                        }
+                        writeCommon(output, version, OP_REP_IMPORT, ST_OK);
+                        writeDevice(output, device, connection, false);
+                        output.flush();
+                        session.run();
+                    } finally {
+                        deviceSessions.remove(session);
+                        session.close();
                     }
-                    writeCommon(output, version, OP_REP_IMPORT, ST_OK);
-                    writeDevice(output, device, connection, false);
-                    output.flush();
-                    session.run();
                     return;
                 } else {
                     throw new IOException("unsupported USB/IP opcode 0x"
@@ -375,6 +383,12 @@ final class UsbIpServer implements AutoCloseable {
             } finally {
                 close();
             }
+        }
+
+        boolean isForDevice(UsbDevice candidate) {
+            return candidate != null
+                    && (device.getDeviceId() == candidate.getDeviceId()
+                    || device.getDeviceName().equals(candidate.getDeviceName()));
         }
 
         private void execute(Submit submit) {
@@ -579,6 +593,15 @@ final class UsbIpServer implements AutoCloseable {
         usbManager.requestPermission(device, permissionIntent);
     }
 
+    private void closeSessions(UsbDevice device) {
+        for (DeviceSession session : deviceSessions) {
+            if (session.isForDevice(device)) {
+                Log.i(TAG, "Closing detached USB/IP session for " + deviceLabel(device));
+                session.close();
+            }
+        }
+    }
+
     private UsbDevice findDevice(String requestedBusId) {
         for (UsbDevice device : usbManager.getDeviceList().values()) {
             if (busId(device).equals(requestedBusId)) {
@@ -683,6 +706,10 @@ final class UsbIpServer implements AutoCloseable {
             } catch (IOException ignored) {
             }
         }
+        for (DeviceSession session : deviceSessions) {
+            session.close();
+        }
+        deviceSessions.clear();
         for (LocalSocket socket : sockets) {
             try {
                 socket.close();
