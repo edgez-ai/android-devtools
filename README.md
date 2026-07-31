@@ -11,6 +11,9 @@ branch, without the AutoJs runtime. It:
 - pairs the native ADB client with the device;
 - exposes the device's local `adbd` through
   `/gvisor/libp2p-tap-tcp/1.0.0`;
+- exports permitted USB host/OTG devices as USB/IP frames directly over a
+  libp2p stream selected by target port `3240` (there is no Android TCP
+  listener);
 - supplies AutoJs6's scrcpy server asset to the native client and lazily
   bootstraps it when libp2p target port `8886` is requested;
 - keeps the proxy alive in a foreground service and restarts it after boot.
@@ -140,6 +143,33 @@ The app restarts the tunnel after boot, but Android's Wireless Debugging switch
 may need to be enabled again after a reboot. Open the app and tap
 **Refresh ADB & start** after enabling it.
 
+### USB host / OTG setup
+
+1. Connect the ESP32, nRF54 development board, CMSIS-DAP probe, J-Link, or
+   other target through a powered OTG adapter or hub.
+2. Accept Android's USB access prompt for Android DevTools. Only devices with
+   granted permission are included in the USB/IP device list.
+3. Configure `adb-sidecar` with `USBIP_REMOTE_BUSIDS=all`, or use the bus ID
+   reported in logcat (for example `1-2`) when only one device should attach.
+4. Run the programmer/debugger in Jupyter exactly as for a locally connected
+   USB device.
+
+Android's USB Host API feeds USB/IP frames to the native client over an
+abstract Unix socket; the native client carries those frames on the raw
+libp2p stream. Only `adb-sidecar` provides a loopback TCP endpoint, because
+the Linux `usbip` client expects TCP.
+
+The server implements USB/IP control, bulk, and interrupt transfers, which
+covers CDC/USB serial and common debug probes. Isochronous transfers are
+rejected. Flashing and debugging are latency-sensitive, so use conservative
+adapter speeds and longer OpenOCD timeouts over high-latency relay paths.
+
+The protocol design was checked against
+[`cgutman/USBIPServerForAndroid`](https://github.com/cgutman/USBIPServerForAndroid)
+and [`jiegec/usbip`](https://github.com/jiegec/usbip). The Android server in
+this repository is an independent implementation using Android's public USB
+Host API.
+
 ## JupyterHub / adb-sidecar
 
 Run `adb-sidecar` in the same Kubernetes Pod as the Flutter/Jupyter container:
@@ -159,6 +189,8 @@ Run `adb-sidecar` in the same Kubernetes Pod as the Flutter/Jupyter container:
       value: "5555"
     - name: LIBP2P_TUNNEL_LOCAL_PORT
       value: "5555"
+    - name: USBIP_REMOTE_BUSIDS
+      value: "all"
 ```
 
 In the Jupyter/Flutter container:
@@ -172,6 +204,12 @@ flutter run -d 127.0.0.1:5555
 Once `flutter run` is attached, use `r` for hot reload and `R` for hot
 restart. The VM service and all forwarded ports travel inside the same ADB
 connection, so no extra libp2p ports are required.
+
+For USB, the sidecar—not Jupyter—runs `usbip attach` against the local
+`127.0.0.1:3240` libp2p bridge. The Kubernetes node must provide `vhci-hcd`,
+and the Jupyter hardware profile must mount the node's `/dev/bus/usb` with a
+device-cgroup policy that permits USB access. See the `adb-sidecar` README for
+the complete hardware-profile example and isolation caveat.
 
 For the custom scrcpy consumer used with AutoJs6, open a libp2p tunnel whose
 remote target is `8886`. The first connection makes the Android native client

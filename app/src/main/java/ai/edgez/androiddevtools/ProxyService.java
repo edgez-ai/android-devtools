@@ -31,6 +31,7 @@ public final class ProxyService extends Service {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean startScheduled = new AtomicBoolean();
     private volatile boolean stopping;
+    private volatile UsbIpServer usbIpServer;
 
     @Override
     public void onCreate() {
@@ -70,6 +71,7 @@ public final class ProxyService extends Service {
     public void onDestroy() {
         stopping = true;
         executor.shutdownNow();
+        stopUsbIpServer();
         stopNativeClient();
         stopForeground(STOP_FOREGROUND_REMOVE);
         super.onDestroy();
@@ -91,6 +93,7 @@ public final class ProxyService extends Service {
                 return;
             }
 
+            startUsbIpServer();
             Log.i(TAG, "Libp2p startup: loading stored config");
             if (!isWirelessDebugEnabled()) {
                 Log.i(TAG, "Wireless Debugging is disabled; requesting enable dialog");
@@ -157,6 +160,26 @@ public final class ProxyService extends Service {
             Log.i(TAG, "Libp2p client stopped: " + response);
         } catch (Throwable throwable) {
             Log.w(TAG, "Unable to stop native client", throwable);
+        }
+    }
+
+    private void startUsbIpServer() throws Exception {
+        if (usbIpServer != null) {
+            return;
+        }
+        UsbIpServer server = new UsbIpServer(this);
+        server.start();
+        usbIpServer = server;
+        Log.i(TAG, "USB/IP stream available on libp2p target port "
+                + UsbIpServer.ROUTE_PORT
+                + "; exported devices=" + server.exportedDevices());
+    }
+
+    private void stopUsbIpServer() {
+        UsbIpServer server = usbIpServer;
+        usbIpServer = null;
+        if (server != null) {
+            server.close();
         }
     }
 
