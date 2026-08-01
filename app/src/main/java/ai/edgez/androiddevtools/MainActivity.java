@@ -13,20 +13,25 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
-import android.text.InputType;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+
+import com.google.android.gms.mlkit.vision.barcode.common.Barcode;
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanner;
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions;
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.Locale;
 
 public final class MainActivity extends Activity {
     private static final int PERMISSION_REQUEST = 10;
@@ -35,8 +40,6 @@ public final class MainActivity extends Activity {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private AlertDialog wirelessDebugDialog;
     private Button expoGoButton;
-    private EditText serialInput;
-    private EditText joinKeyInput;
     private TextView peerIdText;
     private TextView permissionStatusText;
     private TextView statusText;
@@ -105,25 +108,14 @@ public final class MainActivity extends Activity {
         content.addView(button("Grant required permissions", view -> requestRequiredPermissions()));
 
         content.addView(
-                section("2. Get device serial and join key from edgez.ai portal"),
+                section("2. Scan the pairing QR code"),
                 margins(0, 20, 0, 4));
         content.addView(text(
-                "Enter the device serial used by JupyterHub and its join key.",
+                "On the device detail page in edgez.ai, generate a join key and scan the "
+                        + "displayed QR code. Android DevTools will join automatically.",
                 14,
                 Color.DKGRAY));
-        content.addView(button(
-                "How to get the serial and join key",
-                view -> startActivity(new Intent(this, JoinKeyTipsActivity.class))));
-        String storedSerial = ConfigStore.storedSerial(this);
-        String storedJoinKey = ConfigStore.storedJoinKey(this);
-        serialInput = input(
-                "Serial number",
-                storedSerial.isEmpty() ? defaultSerial() : storedSerial,
-                false);
-        joinKeyInput = input("Join key", storedJoinKey, true);
-        content.addView(serialInput);
-        content.addView(joinKeyInput);
-        content.addView(button("Join network", view -> joinNetwork()));
+        content.addView(button("Scan QR code & join", view -> scanPairingQr()));
 
         peerIdText = text("Peer ID: not joined", 14, Color.DKGRAY);
         peerIdText.setTextIsSelectable(true);
@@ -169,13 +161,42 @@ public final class MainActivity extends Activity {
         return scroll;
     }
 
-    private void joinNetwork() {
-        String serial = value(serialInput);
-        String joinKey = value(joinKeyInput);
-        if (serial.isEmpty() || joinKey.isEmpty()) {
-            showStatus("Serial number and join key are required.");
+    private void scanPairingQr() {
+        GmsBarcodeScannerOptions options = new GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .enableAutoZoom()
+                .build();
+        GmsBarcodeScanner scanner = GmsBarcodeScanning.getClient(this, options);
+        showStatus("Point the camera at the pairing QR code shown on edgez.ai.");
+        scanner.startScan()
+                .addOnSuccessListener(barcode -> joinFromPairingQr(barcode.getRawValue()))
+                .addOnCanceledListener(() -> showStatus("QR code scan canceled."))
+                .addOnFailureListener(error ->
+                        showStatus("Could not scan QR code: " + safeMessage(error)));
+    }
+
+    private void joinFromPairingQr(String rawValue) {
+        if (rawValue == null || rawValue.trim().isEmpty()) {
+            showStatus("The scanned QR code is empty.");
             return;
         }
+        try {
+            JSONObject payload = new JSONObject(rawValue);
+            String serial = payload.optString("serial_number", "").trim();
+            String joinKey = payload.optString("join_key", "").trim();
+            if (serial.isEmpty() || joinKey.isEmpty()) {
+                showStatus(
+                        "This is not an EdgeZ pairing QR code. It must contain serial_number "
+                                + "and join_key.");
+                return;
+            }
+            joinNetwork(serial, joinKey);
+        } catch (JSONException error) {
+            showStatus("This is not a valid EdgeZ pairing QR code.");
+        }
+    }
+
+    private void joinNetwork(String serial, String joinKey) {
         runTask("Joining network…", () -> {
             String peerId = ConfigStore.join(
                     this,
@@ -409,20 +430,6 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private EditText input(String hint, String value, boolean secret) {
-        EditText input = new EditText(this);
-        input.setHint(hint);
-        input.setText(value);
-        input.setSingleLine(true);
-        input.setTextSize(15);
-        if (secret) {
-            input.setInputType(
-                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        }
-        input.setLayoutParams(margins(0, 2, 0, 2));
-        return input;
-    }
-
     private Button button(String label, View.OnClickListener listener) {
         Button button = new Button(this);
         button.setText(label);
@@ -454,15 +461,6 @@ public final class MainActivity extends Activity {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
-    }
-
-    private static String value(EditText input) {
-        return input.getText().toString().trim();
-    }
-
-    private static String defaultSerial() {
-        return Build.MANUFACTURER.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-")
-                + "-" + Build.MODEL.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-");
     }
 
     private static String safeMessage(Throwable throwable) {

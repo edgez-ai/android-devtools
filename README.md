@@ -130,10 +130,11 @@ future upgrades must use the same keystore.
 2. Grant notification and Nearby Wi-Fi permissions, then allow unrestricted
    battery use when Android prompts. These keep discovery and the foreground
    relay connection reliable.
-3. Enter only the device serial and join key, then tap **Join network**. The
-   join endpoint and device metadata are supplied internally. Tap **How to get
-   the serial and join key** for an in-app walkthrough of the edgez.ai Devices
-   page, including the one-time join-key warning.
+3. On the device detail page in edgez.ai, generate a join key. In Android
+   DevTools tap **Scan QR code & join**, then scan the displayed pairing QR
+   code. The app validates its `serial_number` and `join_key` fields and joins
+   the network automatically. The scanner is provided by Google Play services
+   and does not require camera permission in Android DevTools.
 4. Tap **Pair from notification**, then choose **Pair device with pairing
    code** in Wireless Debugging settings.
 5. Expand the Android DevTools notification and enter the six-digit code using
