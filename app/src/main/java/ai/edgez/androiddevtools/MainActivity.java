@@ -54,14 +54,17 @@ public final class MainActivity extends Activity {
         }
     };
     private AlertDialog wirelessDebugDialog;
-    private Button expoGoButton;
+    private final Button[] stepTabButtons = new Button[3];
+    private final View[] stepPanels = new View[3];
     private TextView peerIdText;
     private TextView permissionStatusText;
     private TextView proxyStateText;
     private TextView proxyDetailText;
     private TextView statusText;
     private View proxyStateDot;
+    private Button proxyToggleButton;
     private boolean receiverRegistered;
+    private int selectedStep;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -93,10 +96,7 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshPermissionStatus();
-        if (expoGoButton != null) {
-            expoGoButton.setText(ExpoGoLauncher.isInstalled(this)
-                    ? R.string.open_expo_go : R.string.install_expo_go);
-        }
+        refreshStepMarkers();
         maybeShowWirelessDebugDialog(consumeWirelessDebugPrompt());
     }
 
@@ -120,22 +120,18 @@ public final class MainActivity extends Activity {
     private View buildContent() {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(16), dp(18), dp(16), dp(28));
+        content.setPadding(dp(16), dp(12), dp(16), dp(24));
         content.setBackgroundColor(color(R.color.edgez_background));
 
-        LinearLayout hero = verticalPanel(22, gradient(
-                color(R.color.edgez_blue_dark), color(R.color.edgez_blue), 24));
-        TextView eyebrow = text(getString(R.string.hero_eyebrow), 12, Color.WHITE);
-        eyebrow.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        eyebrow.setLetterSpacing(0.08f);
-        hero.addView(eyebrow);
-        TextView title = text(getString(R.string.hero_title), 30, Color.WHITE);
+        LinearLayout hero = verticalPanel(16, gradient(
+                color(R.color.edgez_blue_dark), color(R.color.edgez_blue), 18));
+        TextView title = text(getString(R.string.hero_title), 24, Color.WHITE);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        hero.addView(title, margins(0, 8, 0, 0));
-        TextView subtitle = text(getString(R.string.hero_subtitle), 15, 0xFFE4EEFF);
-        subtitle.setLineSpacing(0, 1.12f);
-        hero.addView(subtitle, margins(0, 8, 0, 0));
-        content.addView(hero, margins(0, 0, 0, 14));
+        hero.addView(title);
+        TextView subtitle = text(getString(R.string.hero_subtitle), 13, 0xFFE4EEFF);
+        subtitle.setLineSpacing(0, 1.05f);
+        hero.addView(subtitle, margins(0, 4, 0, 0));
+        content.addView(hero, margins(0, 0, 0, 10));
 
         LinearLayout connection = card();
         connection.addView(cardTitle(R.string.connection_status));
@@ -161,7 +157,20 @@ public final class MainActivity extends Activity {
         stateRow.addView(stateCopy, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         connection.addView(stateRow);
+        proxyToggleButton = actionButton(
+                R.string.start_proxy, view -> toggleProxy(), true);
+        connection.addView(proxyToggleButton, margins(0, 12, 0, 0));
         content.addView(connection, margins(0, 0, 0, 12));
+
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+        stepTabButtons[0] = stepTab(0, R.string.step_tab_permissions);
+        stepTabButtons[1] = stepTab(1, R.string.step_tab_join);
+        stepTabButtons[2] = stepTab(2, R.string.step_tab_pair);
+        tabs.addView(stepTabButtons[0], weightedButtonMargins(0, 4));
+        tabs.addView(stepTabButtons[1], weightedButtonMargins(4, 4));
+        tabs.addView(stepTabButtons[2], weightedButtonMargins(4, 0));
+        content.addView(tabs, margins(0, 0, 0, 10));
 
         LinearLayout permissions = card();
         permissions.addView(stepTitle("1", R.string.permissions_title));
@@ -170,12 +179,14 @@ public final class MainActivity extends Activity {
         permissions.addView(permissionStatusText, margins(0, 12, 0, 4));
         permissions.addView(actionButton(R.string.grant_permissions,
                 view -> requestRequiredPermissions(), false));
+        stepPanels[0] = permissions;
         content.addView(permissions, margins(0, 0, 0, 12));
 
         LinearLayout join = card();
         join.addView(stepTitle("2", R.string.join_title));
         join.addView(description(R.string.join_description));
         join.addView(actionButton(R.string.scan_qr_join, view -> scanPairingQr(), true));
+        stepPanels[1] = join;
         content.addView(join, margins(0, 0, 0, 12));
 
         LinearLayout wireless = card();
@@ -183,28 +194,11 @@ public final class MainActivity extends Activity {
         wireless.addView(description(R.string.wireless_description));
         wireless.addView(actionButton(R.string.pair_notification,
                 view -> beginNotificationPairing(), false));
+        stepPanels[2] = wireless;
         content.addView(wireless, margins(0, 0, 0, 12));
 
-        LinearLayout tools = card();
-        tools.addView(cardTitle(R.string.developer_tools_title));
-        tools.addView(description(R.string.expo_description));
-        expoGoButton = actionButton(
-                ExpoGoLauncher.isInstalled(this) ? R.string.open_expo_go : R.string.install_expo_go,
-                view -> showStatus(ExpoGoLauncher.openOrInstall(this)), false);
-        tools.addView(expoGoButton);
-        tools.addView(divider(), margins(0, 16, 0, 12));
-        tools.addView(description(R.string.proxy_description));
-        LinearLayout proxyActions = new LinearLayout(this);
-        proxyActions.setOrientation(LinearLayout.HORIZONTAL);
-        Button start = actionButton(R.string.start_proxy, view -> startProxy(), true);
-        Button stop = actionButton(R.string.stop_proxy, view -> {
-            ProxyService.stop(this);
-            showStatus(getString(R.string.status_proxy_stop_requested));
-        }, false);
-        proxyActions.addView(start, weightedButtonMargins(0, 8));
-        proxyActions.addView(stop, weightedButtonMargins(8, 0));
-        tools.addView(proxyActions);
-        content.addView(tools, margins(0, 0, 0, 12));
+        showStep(0);
+        refreshStepMarkers();
 
         statusText = text(getString(R.string.status_ready), 13, color(R.color.edgez_text));
         statusText.setTextIsSelectable(true);
@@ -257,6 +251,8 @@ public final class MainActivity extends Activity {
                     joinKey, Build.MANUFACTURER + " " + Build.MODEL);
             runOnUiThread(() -> {
                 refreshPeerId();
+                refreshStepMarkers();
+                showStep(2);
                 ProxyService.start(this);
                 showStatus(getString(R.string.status_joined, peerId));
             });
@@ -285,6 +281,20 @@ public final class MainActivity extends Activity {
         }
         ProxyService.start(this);
         showStatus(getString(R.string.status_proxy_start));
+    }
+
+    private void toggleProxy() {
+        String state = ProxyStatus.current(this).state;
+        if (ProxyStatus.CONNECTING.equals(state)
+                || ProxyStatus.MESH_ONLINE.equals(state)
+                || ProxyStatus.ADB_ONLINE.equals(state)) {
+            ProxyService.stop(this);
+            showStatus(getString(R.string.status_proxy_stop_requested));
+            return;
+        }
+        if (!ProxyStatus.STOPPING.equals(state)) {
+            startProxy();
+        }
     }
 
     private void openWirelessDebugging() {
@@ -362,6 +372,7 @@ public final class MainActivity extends Activity {
         String peerId = ConfigStore.peerId(this);
         peerIdText.setText(peerId.isEmpty()
                 ? getString(R.string.peer_not_joined) : getString(R.string.peer_id_format, peerId));
+        refreshStepMarkers();
     }
 
     private void refreshProxyStatus() {
@@ -413,6 +424,28 @@ public final class MainActivity extends Activity {
         proxyDetailText.setText(detail == null || detail.trim().isEmpty()
                 ? baseDetail : baseDetail + "\n" + detail.trim());
         proxyStateDot.setBackground(roundRect(dotColor, 99));
+        updateProxyToggle(safeState);
+        refreshStepMarkers();
+    }
+
+    private void updateProxyToggle(String state) {
+        if (proxyToggleButton == null) {
+            return;
+        }
+        boolean running = ProxyStatus.CONNECTING.equals(state)
+                || ProxyStatus.MESH_ONLINE.equals(state)
+                || ProxyStatus.ADB_ONLINE.equals(state);
+        boolean stopping = ProxyStatus.STOPPING.equals(state);
+        proxyToggleButton.setEnabled(!stopping);
+        proxyToggleButton.setText(stopping
+                ? R.string.proxy_button_stopping
+                : running ? R.string.stop_proxy
+                : ProxyStatus.ERROR.equals(state)
+                        ? R.string.retry_proxy : R.string.start_proxy);
+        proxyToggleButton.setTextColor(running
+                ? color(R.color.edgez_blue) : Color.WHITE);
+        proxyToggleButton.setBackgroundTintList(ColorStateList.valueOf(running
+                ? color(R.color.edgez_blue_soft) : color(R.color.edgez_blue)));
     }
 
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
@@ -510,6 +543,7 @@ public final class MainActivity extends Activity {
                         + "\n" + permissionLine(getString(R.string.permission_battery), unrestricted));
         permissionStatusText.setTextColor(notifications && nearby && unrestricted
                 ? color(R.color.edgez_success) : color(R.color.edgez_warning));
+        refreshStepMarkers();
     }
 
     private static String permissionLine(String name, boolean granted) {
@@ -565,6 +599,63 @@ public final class MainActivity extends Activity {
         return row;
     }
 
+    private Button stepTab(int index, int label) {
+        Button button = new Button(this);
+        button.setAllCaps(false);
+        button.setTextSize(12);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setMinHeight(dp(58));
+        button.setPadding(dp(6), dp(7), dp(6), dp(7));
+        button.setOnClickListener(view -> showStep(index));
+        button.setTag(label);
+        return button;
+    }
+
+    private void showStep(int index) {
+        if (index < 0 || index >= stepPanels.length) {
+            return;
+        }
+        selectedStep = index;
+        for (int current = 0; current < stepPanels.length; current++) {
+            View panel = stepPanels[current];
+            if (panel != null) {
+                panel.setVisibility(current == index ? View.VISIBLE : View.GONE);
+            }
+            Button tab = stepTabButtons[current];
+            if (tab != null) {
+                boolean selected = current == index;
+                tab.setTextColor(selected ? Color.WHITE : color(R.color.edgez_blue));
+                tab.setBackgroundTintList(ColorStateList.valueOf(selected
+                        ? color(R.color.edgez_blue) : color(R.color.edgez_blue_soft)));
+            }
+        }
+    }
+
+    private void refreshStepMarkers() {
+        boolean[] complete = {
+                hasAllRequiredPermissions(),
+                ConfigStore.isConfigured(this),
+                ConfigStore.isConfigured(this) && ConfigStore.loadAdbEndpoint(this) != null
+        };
+        for (int index = 0; index < stepTabButtons.length; index++) {
+            Button tab = stepTabButtons[index];
+            if (tab == null) {
+                continue;
+            }
+            int label = (Integer) tab.getTag();
+            tab.setText((index + 1) + (complete[index] ? " ✅" : "")
+                    + "\n" + getString(label));
+        }
+        showStep(selectedStep);
+    }
+
+    private boolean hasAllRequiredPermissions() {
+        PowerManager powerManager = getSystemService(PowerManager.class);
+        return hasRuntimePermissions()
+                && powerManager.isIgnoringBatteryOptimizations(getPackageName());
+    }
+
     private TextView description(int label) {
         TextView description = text(getString(label), 14, color(R.color.edgez_text_muted));
         description.setLineSpacing(0, 1.12f);
@@ -585,14 +676,6 @@ public final class MainActivity extends Activity {
         button.setMinHeight(dp(46));
         button.setLayoutParams(margins(0, 10, 0, 0));
         return button;
-    }
-
-    private View divider() {
-        View divider = new View(this);
-        divider.setBackgroundColor(0xFFE4EAF3);
-        divider.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
-        return divider;
     }
 
     private TextView text(String value, int size, int textColor) {

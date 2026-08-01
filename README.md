@@ -16,8 +16,6 @@ branch, without the AutoJs runtime. It:
   listener);
 - supplies AutoJs6's scrcpy server asset to the native client and lazily
   bootstraps it when libp2p target port `8886` is requested;
-- detects and opens the dedicated Expo Go app, or links to Expo's official
-  version picker when it is not installed;
 - keeps the proxy alive in a foreground service and restarts it after boot.
 
 Like AutoJs6, the app starts the libp2p foreground client automatically whenever
@@ -217,9 +215,8 @@ connection, so no extra libp2p ports are required.
 ### React Native / Expo Go
 
 Expo Go remains a dedicated Android app so that its version can match the
-project's Expo SDK. In Android DevTools, tap **Install Expo Go** to open Expo's
-official Android version picker, or **Open Expo Go** when it is already
-installed.
+project's Expo SDK. Expo CLI installs or updates the compatible version through
+the proxied ADB connection.
 
 Expo CLI in the remote IDE creates `adb reverse tcp:8081 tcp:8081` over the
 libp2p-backed ADB connection. On Android, `adbd` accepts the connection to

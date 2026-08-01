@@ -49,7 +49,7 @@ final class ConfigStore {
         payload.put("serial_number", serial);
         payload.put("platform", "android");
         payload.put("arch", Build.SUPPORTED_ABIS.length == 0 ? "unknown" : Build.SUPPORTED_ABIS[0]);
-        payload.put("version", "android-devtools/0.2.0");
+        payload.put("version", "android-devtools/0.4.0");
         payload.put("name", name);
         payload.put("port", 22);
         payload.put("username", "android");

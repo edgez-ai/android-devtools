@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Android DevTools</string>
-    <string name="hero_eyebrow">EDGEZ • PHYSICAL DEVICE</string>
     <string name="hero_title">Android DevTools</string>
     <string name="hero_subtitle">Connect a physical Android device to your cloud workspace through the EdgeZ mesh.</string>
     <string name="connection_status">Connection status</string>
@@ -27,6 +26,9 @@
     <string name="permission_notifications">Notifications</string>
     <string name="permission_nearby_wifi">Nearby Wi-Fi</string>
     <string name="permission_battery">Battery unrestricted</string>
+    <string name="step_tab_permissions">Permissions</string>
+    <string name="step_tab_join">Join</string>
+    <string name="step_tab_pair">Pair ADB</string>
 
     <string name="join_title">Join your EdgeZ project</string>
     <string name="join_description">Generate a join key on the device detail page, then scan its QR code. The serial and key are validated automatically.</string>
@@ -36,13 +38,10 @@
     <string name="wireless_description">Open “Pair device with pairing code” in Android settings, then enter the six-digit code from the Android DevTools notification.</string>
     <string name="pair_notification">Pair from notification</string>
 
-    <string name="developer_tools_title">Developer tools</string>
-    <string name="expo_description">Open the Expo Go build that matches your remote React Native project.</string>
-    <string name="open_expo_go">Open Expo Go</string>
-    <string name="install_expo_go">Install Expo Go</string>
-    <string name="proxy_description">Refresh the local ADB target or stop the background tunnel.</string>
     <string name="start_proxy">Refresh ADB &amp; start</string>
     <string name="stop_proxy">Stop proxy</string>
+    <string name="retry_proxy">Retry proxy</string>
+    <string name="proxy_button_stopping">Stopping…</string>
 
     <string name="status_ready">Ready. Your cloud workspace connects to adb-sidecar at 127.0.0.1:5555.</string>
     <string name="status_proxy_stop_requested">Proxy stop requested.</string>
@@ -69,10 +68,6 @@
     <string name="wireless_disabled">Turn on Wireless Debugging, then choose “Pair device with pairing code”. Keep Settings open until Android DevTools finds the pairing endpoint.</string>
     <string name="open_wireless_debugging">Open Wireless Debugging</string>
     <string name="later">Later</string>
-
-    <string name="expo_opened">Expo Go opened. Start the project from the remote IDE to load it.</string>
-    <string name="expo_install_started">Choose the Expo Go version matching your project, install it, then return here.</string>
-    <string name="expo_no_browser">No browser is available. From the remote IDE, run npx expo start --android; Expo CLI can install the matching Expo Go build through ADB.</string>
 
     <string name="pair_discovery_failed">Pairing discovery failed: %1$s</string>
     <string name="pair_code_invalid">The Wireless Debugging pairing code must contain six digits.</string>
