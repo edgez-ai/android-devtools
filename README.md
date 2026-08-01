@@ -218,8 +218,8 @@ Expo Go remains a dedicated Android app so that its version can match the
 project's Expo SDK. Expo CLI installs or updates the compatible version through
 the proxied ADB connection.
 
-EdgeZ Devtools listens on device `127.0.0.1:8081` and opens a dedicated
-reverse libp2p stream to `adb-sidecar` for every Metro HTTP or WebSocket
+EdgeZ Devtools listens on device `127.0.0.1:8081` and opens a reverse stream
+over the existing tap-tcp libp2p protocol for every Metro HTTP or WebSocket
 connection. The sidecar forwards each stream to Metro on the remote IDE Pod's
 `127.0.0.1:8081`. This does not depend on Android wireless debugging or `adb
 reverse`, and Metro is not exposed publicly.
