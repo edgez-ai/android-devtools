@@ -10,7 +10,6 @@ import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
-import android.provider.Settings;
 import android.util.Log;
 
 import org.json.JSONObject;
@@ -100,10 +99,6 @@ public final class ProxyService extends Service {
 
             startUsbIpServer();
             Log.i(TAG, "Libp2p startup: loading stored config");
-            if (!isWirelessDebugEnabled()) {
-                Log.i(TAG, "Wireless Debugging is disabled; requesting enable dialog");
-                requestWirelessDebugPrompt(this);
-            }
             Endpoint endpoint = WirelessDebugDiscovery.discoverConnect(this, 5_000);
             if (endpoint != null) {
                 ConfigStore.saveAdbEndpoint(this, endpoint);
@@ -192,15 +187,6 @@ public final class ProxyService extends Service {
         }
     }
 
-    private boolean isWirelessDebugEnabled() {
-        try {
-            return Settings.Global.getInt(getContentResolver(), "adb_wifi_enabled", 0) == 1;
-        } catch (RuntimeException exception) {
-            Log.w(TAG, "Unable to read Wireless Debugging state", exception);
-            return false;
-        }
-    }
-
     static boolean startIfConfigured(Context context) {
         if (!ConfigStore.isConfigured(context)) {
             return false;
@@ -222,8 +208,12 @@ public final class ProxyService extends Service {
         Thread refreshThread = new Thread(() -> {
             Endpoint endpoint = WirelessDebugDiscovery.discoverConnect(context, 8_000);
             if (endpoint == null) {
-                Log.w(TAG, "Native reconnect requested but Wireless Debugging was not discovered");
-                requestWirelessDebugPrompt(context);
+                Log.w(TAG, "Native reconnect requested but no local ADB endpoint was found");
+                if (!isProxyConnected(context)) {
+                    requestWirelessDebugPrompt(context);
+                } else {
+                    Log.i(TAG, "Mesh proxy is connected; suppressing Wireless Debugging prompt");
+                }
                 return;
             }
             ConfigStore.saveAdbEndpoint(context, endpoint);
@@ -232,6 +222,13 @@ public final class ProxyService extends Service {
             startLocalScrcpy();
         }, "adb-target-refresh");
         refreshThread.start();
+    }
+
+    private static boolean isProxyConnected(Context context) {
+        String state = ProxyStatus.current(context).state;
+        return ProxyStatus.CONNECTING.equals(state)
+                || ProxyStatus.MESH_ONLINE.equals(state)
+                || ProxyStatus.ADB_ONLINE.equals(state);
     }
 
     private static void startLocalScrcpy() {

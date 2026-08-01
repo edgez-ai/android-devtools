@@ -47,7 +47,7 @@ final class UsbIpServer implements AutoCloseable {
     static final int ROUTE_PORT = 3240;
     private static final String SOCKET_NAME = "edgez-usbip";
     private static final String TAG = "AndroidDevTools";
-    private static final String ACTION_USB_PERMISSION =
+    static final String ACTION_USB_PERMISSION =
             "ai.edgez.androiddevtools.USB_IP_PERMISSION";
 
     private static final int USBIP_VERSION = 0x0111;

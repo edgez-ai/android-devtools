@@ -19,6 +19,9 @@
     <string name="proxy_state_error">Le proxy nécessite votre attention</string>
     <string name="proxy_detail_error">Le proxy n’a pas pu démarrer. Consultez les détails ci-dessous et réessayez.</string>
     <string name="proxy_endpoint_format">Point de terminaison ADB local : 127.0.0.1:%1$d</string>
+    <string name="usb_status_unavailable">Aucun périphérique USB connecté</string>
+    <string name="usb_status_permission">Autorisation USB requise</string>
+    <string name="usb_status_ready">USB prêt · %1$d</string>
 
     <string name="permissions_title">Autoriser la détection en arrière-plan</string>
     <string name="permissions_description">Les notifications indiquent l’état du tunnel, le Wi-Fi à proximité détecte le débogage sans fil et l’accès illimité à la batterie maintient le relais en ligne.</string>

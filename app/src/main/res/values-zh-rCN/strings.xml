@@ -19,6 +19,9 @@
     <string name="proxy_state_error">代理需要处理</string>
     <string name="proxy_detail_error">代理无法启动。请查看下方详情后重试。</string>
     <string name="proxy_endpoint_format">本地 ADB 端点：127.0.0.1:%1$d</string>
+    <string name="usb_status_unavailable">未连接 USB 设备</string>
+    <string name="usb_status_permission">需要 USB 权限</string>
+    <string name="usb_status_ready">USB 已就绪 · %1$d</string>
 
     <string name="permissions_title">允许后台发现</string>
     <string name="permissions_description">通知用于显示隧道状态，“附近 Wi-Fi”用于查找无线调试，不受限电池使用可保持中继在线。</string>

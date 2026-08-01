@@ -6,6 +6,8 @@ import android.net.nsd.NsdServiceInfo;
 import android.util.Log;
 
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -24,7 +26,21 @@ final class WirelessDebugDiscovery {
     }
 
     static Endpoint discoverConnect(Context context, long timeoutMillis) {
+        Endpoint legacy = probeLegacyAdbTcp();
+        if (legacy != null) {
+            Log.i(TAG, "Legacy ADB TCP endpoint found: " + legacy.display());
+            return legacy;
+        }
         return discover(context, CONNECT_TYPE, timeoutMillis);
+    }
+
+    private static Endpoint probeLegacyAdbTcp() {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress("127.0.0.1", 5555), 500);
+            return new Endpoint("127.0.0.1", 5555);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private static Endpoint discover(Context context, String serviceType, long timeoutMillis) {
@@ -130,4 +146,3 @@ final class WirelessDebugDiscovery {
         return zone > 0 ? host.substring(0, zone) : host;
     }
 }
-

@@ -19,6 +19,9 @@
     <string name="proxy_state_error">Proxy needs attention</string>
     <string name="proxy_detail_error">The proxy could not start. Review the detail below and try again.</string>
     <string name="proxy_endpoint_format">Local ADB endpoint: 127.0.0.1:%1$d</string>
+    <string name="usb_status_unavailable">No USB device attached</string>
+    <string name="usb_status_permission">USB permission required</string>
+    <string name="usb_status_ready">USB ready · %1$d</string>
 
     <string name="permissions_title">Allow background discovery</string>
     <string name="permissions_description">Notifications show tunnel health, Nearby Wi-Fi finds Wireless Debugging, and unrestricted battery access keeps the relay online.</string>

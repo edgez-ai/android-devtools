@@ -14,6 +14,8 @@ import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -51,6 +53,12 @@ public final class MainActivity extends Activity {
                     intent.getStringExtra(ProxyStatus.EXTRA_DETAIL));
         }
     };
+    private final BroadcastReceiver usbStatusReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            refreshUsbStatus();
+        }
+    };
     private AlertDialog wirelessDebugDialog;
     private final Button[] stepTabButtons = new Button[3];
     private final View[] stepPanels = new View[3];
@@ -58,8 +66,10 @@ public final class MainActivity extends Activity {
     private TextView permissionStatusText;
     private TextView proxyStateText;
     private TextView proxyDetailText;
+    private TextView usbStatusText;
     private TextView statusText;
     private View proxyStateDot;
+    private View usbStateDot;
     private Button proxyToggleButton;
     private boolean receiverRegistered;
     private int selectedStep;
@@ -71,6 +81,7 @@ public final class MainActivity extends Activity {
         refreshPeerId();
         refreshPermissionStatus();
         refreshProxyStatus();
+        refreshUsbStatus();
         requestRuntimePermissions();
     }
 
@@ -85,6 +96,7 @@ public final class MainActivity extends Activity {
     protected void onStop() {
         if (receiverRegistered) {
             unregisterReceiver(proxyStatusReceiver);
+            unregisterReceiver(usbStatusReceiver);
             receiverRegistered = false;
         }
         super.onStop();
@@ -94,6 +106,7 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshPermissionStatus();
+        refreshUsbStatus();
         refreshStepMarkers();
         maybeShowWirelessDebugDialog(consumeWirelessDebugPrompt());
     }
@@ -155,6 +168,19 @@ public final class MainActivity extends Activity {
         stateRow.addView(stateCopy, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         connection.addView(stateRow);
+
+        LinearLayout usbRow = new LinearLayout(this);
+        usbRow.setOrientation(LinearLayout.HORIZONTAL);
+        usbRow.setGravity(Gravity.CENTER_VERTICAL);
+        usbStateDot = new View(this);
+        LinearLayout.LayoutParams usbDotParams = new LinearLayout.LayoutParams(dp(8), dp(8));
+        usbDotParams.setMargins(dp(2), 0, dp(12), 0);
+        usbRow.addView(usbStateDot, usbDotParams);
+        usbStatusText = text(getString(R.string.usb_status_unavailable), 13,
+                color(R.color.edgez_text_muted));
+        usbRow.addView(usbStatusText);
+        connection.addView(usbRow, margins(0, 12, 0, 0));
+
         proxyToggleButton = actionButton(
                 R.string.start_proxy, view -> toggleProxy(), true);
         connection.addView(proxyToggleButton, margins(0, 12, 0, 0));
@@ -334,10 +360,13 @@ public final class MainActivity extends Activity {
     }
 
     private void maybeShowWirelessDebugDialog(boolean force) {
-        if (!ConfigStore.isConfigured(this) || !hasRuntimePermissions()) {
+        if (!force || !ConfigStore.isConfigured(this) || !hasRuntimePermissions()) {
             return;
         }
-        if (!force && isWirelessDebugEnabled()) {
+        String proxyState = ProxyStatus.current(this).state;
+        if (ProxyStatus.CONNECTING.equals(proxyState)
+                || ProxyStatus.MESH_ONLINE.equals(proxyState)
+                || ProxyStatus.ADB_ONLINE.equals(proxyState)) {
             return;
         }
         if (isFinishing() || isDestroyed()
@@ -393,6 +422,34 @@ public final class MainActivity extends Activity {
     private void refreshProxyStatus() {
         ProxyStatus.Snapshot snapshot = ProxyStatus.current(this);
         updateProxyStatus(snapshot.state, snapshot.detail);
+    }
+
+    private void refreshUsbStatus() {
+        if (usbStatusText == null || usbStateDot == null) {
+            return;
+        }
+        UsbManager usbManager = getSystemService(UsbManager.class);
+        int attached = 0;
+        int permitted = 0;
+        if (usbManager != null) {
+            for (UsbDevice device : usbManager.getDeviceList().values()) {
+                attached++;
+                if (usbManager.hasPermission(device)) {
+                    permitted++;
+                }
+            }
+        }
+        int dotColor;
+        if (permitted > 0) {
+            usbStatusText.setText(getString(R.string.usb_status_ready, permitted));
+            dotColor = color(R.color.edgez_success);
+        } else {
+            usbStatusText.setText(attached > 0
+                    ? R.string.usb_status_permission : R.string.usb_status_unavailable);
+            dotColor = attached > 0
+                    ? color(R.color.edgez_warning) : color(R.color.edgez_offline);
+        }
+        usbStateDot.setBackground(roundRect(dotColor, 99));
     }
 
     private void updateProxyStatus(String state, String detail) {
@@ -469,10 +526,15 @@ public final class MainActivity extends Activity {
             return;
         }
         IntentFilter filter = new IntentFilter(ProxyStatus.ACTION_CHANGED);
+        IntentFilter usbFilter = new IntentFilter(UsbIpServer.ACTION_USB_PERMISSION);
+        usbFilter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+        usbFilter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(proxyStatusReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(usbStatusReceiver, usbFilter, Context.RECEIVER_NOT_EXPORTED);
         } else {
             registerReceiver(proxyStatusReceiver, filter);
+            registerReceiver(usbStatusReceiver, usbFilter);
         }
         receiverRegistered = true;
     }

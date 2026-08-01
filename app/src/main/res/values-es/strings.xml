@@ -19,6 +19,9 @@
     <string name="proxy_state_error">El proxy requiere atención</string>
     <string name="proxy_detail_error">No se pudo iniciar el proxy. Revisa los detalles siguientes e inténtalo de nuevo.</string>
     <string name="proxy_endpoint_format">Punto de conexión ADB local: 127.0.0.1:%1$d</string>
+    <string name="usb_status_unavailable">No hay dispositivos USB conectados</string>
+    <string name="usb_status_permission">Se requiere permiso USB</string>
+    <string name="usb_status_ready">USB listo · %1$d</string>
 
     <string name="permissions_title">Permitir detección en segundo plano</string>
     <string name="permissions_description">Las notificaciones muestran el estado del túnel, el Wi-Fi cercano detecta la depuración inalámbrica y el uso de batería sin restricciones mantiene el relé conectado.</string>

@@ -19,6 +19,9 @@
     <string name="proxy_state_error">プロキシの確認が必要です</string>
     <string name="proxy_detail_error">プロキシを開始できませんでした。下の詳細を確認して再試行してください。</string>
     <string name="proxy_endpoint_format">ローカル ADB エンドポイント：127.0.0.1:%1$d</string>
+    <string name="usb_status_unavailable">USB デバイス未接続</string>
+    <string name="usb_status_permission">USB の権限が必要です</string>
+    <string name="usb_status_ready">USB 準備完了 · %1$d</string>
 
     <string name="permissions_title">バックグラウンド検出を許可</string>
     <string name="permissions_description">通知でトンネル状態を表示し、付近の Wi-Fi でワイヤレス デバッグを検出します。バッテリー使用を制限なしにするとリレー接続が維持されます。</string>
