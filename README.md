@@ -218,23 +218,22 @@ Expo Go remains a dedicated Android app so that its version can match the
 project's Expo SDK. Expo CLI installs or updates the compatible version through
 the proxied ADB connection.
 
-Expo CLI in the remote IDE creates `adb reverse tcp:8081 tcp:8081` over the
-libp2p-backed ADB connection. On Android, `adbd` accepts the connection to
-device `localhost:8081` and carries it back to Metro on the remote IDE's
-`localhost:8081`. No public Metro listener, Expo tunnel, device Wi-Fi route,
-second libp2p target port, or Expo-specific sidecar process is required.
+EdgeZ Devtools listens on device `127.0.0.1:8081` and opens a dedicated
+reverse libp2p stream to `adb-sidecar` for every Metro HTTP or WebSocket
+connection. The sidecar forwards each stream to Metro on the remote IDE Pod's
+`127.0.0.1:8081`. This does not depend on Android wireless debugging or `adb
+reverse`, and Metro is not exposed publicly.
 
 From an Expo project in the remote IDE:
 
 ```sh
 adb connect 127.0.0.1:5555
-npx expo start --host localhost --port 8081 --android
+npx expo start --host localhost --port 8081
 ```
 
-Expo CLI detects the proxied Android device, creates the reverse mapping,
-installs the Expo Go version that matches the project when necessary, and
-opens the computed project URL. If Expo Go is already installed but does not
-open automatically:
+Expo CLI can install the Expo Go version that matches the project through the
+proxied ADB connection. Launch the loopback URL explicitly (Expo Go does not
+discover a libp2p route automatically):
 
 ```sh
 adb -s 127.0.0.1:5555 shell am start \
@@ -243,8 +242,8 @@ adb -s 127.0.0.1:5555 shell am start \
 ```
 
 For a non-Expo React Native app or an Expo development build, use the same ADB
-device with `npx react-native run-android` or `npx expo run:android`; ADB reverse
-continues to carry Metro on port 8081.
+device with `npx react-native run-android` or `npx expo run:android` and point
+the development server URL at `127.0.0.1:8081`.
 
 For USB, the sidecar—not Jupyter—runs `usbip attach` against the local
 `127.0.0.1:3240` libp2p bridge. The Kubernetes node must provide `vhci-hcd`,
