@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EdgeZ DevTools</string>
+    <string name="hero_title">EdgeZ DevTools</string>
+    <string name="hero_subtitle">EdgeZ メッシュ経由で実機の Android デバイスをクラウドワークスペースに接続します。</string>
+    <string name="connection_status">接続状態</string>
+    <string name="peer_not_joined">EdgeZ に未接続</string>
+    <string name="peer_id_format">ピア ID：%1$s</string>
+    <string name="proxy_state_disconnected">プロキシ切断済み</string>
+    <string name="proxy_detail_disconnected">EdgeZ メッシュに参加してからプロキシを開始してください。</string>
+    <string name="proxy_state_connecting">EdgeZ に接続中</string>
+    <string name="proxy_detail_connecting">libp2p クライアントを開始し、ローカル ADB を検出しています。</string>
+    <string name="proxy_state_mesh_online">メッシュはオンライン</string>
+    <string name="proxy_detail_mesh_online">libp2p は接続済みです。ADB を公開するにはワイヤレス デバッグを有効にしてください。</string>
+    <string name="proxy_state_adb_online">ADB プロキシはオンライン</string>
+    <string name="proxy_detail_adb_online">クラウドワークスペースから libp2p 経由でこのデバイスにアクセスできます。</string>
+    <string name="proxy_state_stopping">プロキシを停止中</string>
+    <string name="proxy_detail_stopping">ADB ルートと libp2p 接続を閉じています。</string>
+    <string name="proxy_state_error">プロキシの確認が必要です</string>
+    <string name="proxy_detail_error">プロキシを開始できませんでした。下の詳細を確認して再試行してください。</string>
+    <string name="proxy_endpoint_format">ローカル ADB エンドポイント：127.0.0.1:%1$d</string>
+
+    <string name="permissions_title">バックグラウンド検出を許可</string>
+    <string name="permissions_description">通知でトンネル状態を表示し、付近の Wi-Fi でワイヤレス デバッグを検出します。バッテリー使用を制限なしにするとリレー接続が維持されます。</string>
+    <string name="grant_permissions">必要な権限を許可</string>
+    <string name="permission_notifications">通知</string>
+    <string name="permission_nearby_wifi">付近の Wi-Fi</string>
+    <string name="permission_battery">バッテリー使用：制限なし</string>
+    <string name="step_tab_permissions">権限</string>
+    <string name="step_tab_join">参加</string>
+    <string name="step_tab_pair">ADB ペア設定</string>
+
+    <string name="join_title">EdgeZ プロジェクトに参加</string>
+    <string name="join_description">デバイス詳細ページで参加キーを生成し、その QR コードをスキャンしてください。シリアル番号とキーは自動的に検証されます。</string>
+    <string name="scan_qr_join">QR コードをスキャンして参加</string>
+
+    <string name="wireless_title">ワイヤレス デバッグをペア設定</string>
+    <string name="wireless_description">Android の設定で「ペア設定コードによるデバイスのペア設定」を開き、EdgeZ DevTools の通知に 6 桁のコードを入力してください。</string>
+    <string name="pair_notification">通知からペア設定</string>
+
+    <string name="start_proxy">プロキシを開始</string>
+    <string name="stop_proxy">プロキシを停止</string>
+    <string name="retry_proxy">プロキシを再試行</string>
+    <string name="proxy_button_stopping">停止中…</string>
+
+    <string name="status_ready">準備完了。クラウドワークスペースは 127.0.0.1:5555 で adb-sidecar に接続します。</string>
+    <string name="status_proxy_stop_requested">プロキシの停止を要求しました。</string>
+    <string name="status_scan_prompt">edgez.ai に表示されたペア設定用 QR コードにカメラを向けてください。</string>
+    <string name="status_scan_canceled">QR コードのスキャンをキャンセルしました。</string>
+    <string name="status_scan_failed">QR コードをスキャンできませんでした：%1$s</string>
+    <string name="status_qr_empty">スキャンした QR コードは空です。</string>
+    <string name="status_qr_fields_missing">これは EdgeZ のペア設定用 QR コードではありません。serial_number と join_key が必要です。</string>
+    <string name="status_qr_invalid">これは有効な EdgeZ ペア設定用 QR コードではありません。</string>
+    <string name="status_joining">EdgeZ ネットワークに参加中…</string>
+    <string name="status_joined">参加しました。メッシュ接続をバックグラウンドで開始しています。ピア ID：%1$s</string>
+    <string name="status_permissions_before_pairing">ペア設定を開始する前に、通知と付近の Wi-Fi の権限を許可してください。</string>
+    <string name="status_join_before_pairing">ペア設定の前に EdgeZ ネットワークに参加してください。</string>
+    <string name="status_pairing_search">ペア設定の検索を開始しました。「ペア設定コードによるデバイスのペア設定」を開き、EdgeZ DevTools の通知に返信してください。</string>
+    <string name="status_join_before_proxy">先に EdgeZ ネットワークに参加してください。</string>
+    <string name="status_proxy_start">プロキシの開始を要求しました。常駐通知で状態を確認してください。</string>
+    <string name="status_all_permissions">必要な権限はすべて許可されています。</string>
+    <string name="status_pairing_permissions">ペア設定の権限が許可されました。次にバッテリー使用を制限なしにしてください。</string>
+    <string name="status_permissions_needed">検出と安定したバックグラウンド状態表示には、付近の Wi-Fi と通知の権限が必要です。</string>
+    <string name="status_error">エラー：%1$s</string>
+
+    <string name="wireless_required_title">ワイヤレス デバッグが必要です</string>
+    <string name="wireless_enabled_missing">ワイヤレス デバッグは有効ですが、ADB エンドポイントが見つかりません。ワイヤレス デバッグを開き、「ペア設定コードによるデバイスのペア設定」を選択してください。</string>
+    <string name="wireless_disabled">ワイヤレス デバッグをオンにし、「ペア設定コードによるデバイスのペア設定」を選択してください。EdgeZ DevTools がペア設定エンドポイントを見つけるまで設定画面を開いたままにしてください。</string>
+    <string name="open_wireless_debugging">ワイヤレス デバッグを開く</string>
+    <string name="later">後で</string>
+
+    <string name="pair_discovery_failed">ペア設定の検出に失敗しました：%1$s</string>
+    <string name="pair_code_invalid">ワイヤレス デバッグのペア設定コードは 6 桁の数字である必要があります。</string>
+    <string name="pair_endpoint_expired">ワイヤレス デバッグのペア設定エンドポイントは利用できなくなりました。</string>
+    <string name="pair_waiting_endpoint">ワイヤレス デバッグをペア設定しました。接続エンドポイントを待っています。</string>
+    <string name="pair_proxy_starting">ワイヤレス デバッグをペア設定しました。EdgeZ ADB プロキシを開始しています。</string>
+    <string name="pair_failed">ペア設定に失敗しました：%1$s</string>
+    <string name="notification_searching_title">ワイヤレス デバッグを検索中</string>
+    <string name="notification_searching_text">Android の設定で「ペア設定コードによるデバイスのペア設定」を開いてください。</string>
+    <string name="notification_found_title">ワイヤレス デバッグが見つかりました</string>
+    <string name="notification_found_text">この通知に 6 桁のペア設定コードを入力してください。</string>
+    <string name="notification_pairing_title">ワイヤレス デバッグをペア設定中</string>
+    <string name="notification_pairing_text">ローカル ADB 接続を認証しています…</string>
+    <string name="pairing_code">ペア設定コード</string>
+    <string name="enter_pairing_code">ペア設定コードを入力</string>
+    <string name="stop">停止</string>
+    <string name="notification_pair_failed">ワイヤレス デバッグのペア設定に失敗しました</string>
+    <string name="notification_paired">ワイヤレス デバッグをペア設定しました</string>
+    <string name="pairing_channel_name">ワイヤレス ADB ペア設定</string>
+    <string name="pairing_channel_description">通知からワイヤレス デバッグのペア設定コードを入力します</string>
+
+    <string name="proxy_starting">EdgeZ ADB プロキシを開始中…</string>
+    <string name="proxy_online_no_adb">EdgeZ オンライン • %1$s • ADB を使用するにはワイヤレス デバッグを有効にしてください</string>
+    <string name="proxy_online">ADB プロキシ オンライン • %1$s • ローカル adbd：%2$d</string>
+    <string name="proxy_error">プロキシ エラー：%1$s</string>
+    <string name="proxy_stopping">EdgeZ ADB プロキシを停止中…</string>
+    <string name="proxy_channel_name">リモート ADB プロキシ</string>
+    <string name="proxy_channel_description">Flutter および React Native ワークスペースで EdgeZ ADB トンネルを利用可能に保ちます</string>
+</resources>

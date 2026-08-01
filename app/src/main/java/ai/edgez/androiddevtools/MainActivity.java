@@ -27,10 +27,8 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import com.google.mlkit.vision.barcode.common.Barcode;
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanner;
-import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions;
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning;
+import com.google.zxing.integration.android.IntentIntegrator;
+import com.google.zxing.integration.android.IntentResult;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -212,18 +210,35 @@ public final class MainActivity extends Activity {
         return scroll;
     }
 
+    @SuppressWarnings("deprecation")
     private void scanPairingQr() {
-        GmsBarcodeScannerOptions options = new GmsBarcodeScannerOptions.Builder()
-                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                .enableAutoZoom()
-                .build();
-        GmsBarcodeScanner scanner = GmsBarcodeScanning.getClient(this, options);
         showStatus(getString(R.string.status_scan_prompt));
-        scanner.startScan()
-                .addOnSuccessListener(barcode -> joinFromPairingQr(barcode.getRawValue()))
-                .addOnCanceledListener(() -> showStatus(getString(R.string.status_scan_canceled)))
-                .addOnFailureListener(error -> showStatus(
-                        getString(R.string.status_scan_failed, safeMessage(error))));
+        try {
+            new IntentIntegrator(this)
+                    .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
+                    .setPrompt(getString(R.string.status_scan_prompt))
+                    .setBeepEnabled(false)
+                    .setOrientationLocked(false)
+                    .initiateScan();
+        } catch (RuntimeException error) {
+            showStatus(getString(R.string.status_scan_failed, safeMessage(error)));
+        }
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        IntentResult result = IntentIntegrator.parseActivityResult(
+                requestCode, resultCode, data);
+        if (result != null) {
+            if (result.getContents() == null) {
+                showStatus(getString(R.string.status_scan_canceled));
+            } else {
+                joinFromPairingQr(result.getContents());
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
     }
 
     private void joinFromPairingQr(String rawValue) {

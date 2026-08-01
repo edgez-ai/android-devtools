@@ -103,7 +103,8 @@ public final class PairingService extends Service {
                 }
             } catch (Throwable throwable) {
                 Log.w(TAG, "Pairing endpoint discovery failed", throwable);
-                postResult("Pairing discovery failed: " + safeMessage(throwable), true);
+                postResult(getString(
+                        R.string.pair_discovery_failed, safeMessage(throwable)), true);
             } finally {
                 searching.set(false);
             }
@@ -123,11 +124,11 @@ public final class PairingService extends Service {
     private void pairFromNotification(String code, String pairHost, int pairPort) {
         executor.execute(() -> {
             if (code.length() < 6) {
-                postResult("The Wireless Debugging pairing code must contain six digits.", true);
+                postResult(getString(R.string.pair_code_invalid), true);
                 return;
             }
             if (pairHost.trim().isEmpty() || pairPort < 1 || pairPort > 65535) {
-                postResult("The Wireless Debugging pairing endpoint is no longer available.", true);
+                postResult(getString(R.string.pair_endpoint_expired), true);
                 return;
             }
             try {
@@ -168,12 +169,12 @@ public final class PairingService extends Service {
                 ProxyService.start(this);
                 postResult(
                         localAdb == null
-                                ? "Wireless Debugging paired. Waiting for its connect endpoint."
-                                : "Wireless Debugging paired. The libp2p ADB proxy is starting.",
+                                ? getString(R.string.pair_waiting_endpoint)
+                                : getString(R.string.pair_proxy_starting),
                         false);
             } catch (Throwable throwable) {
                 Log.w(TAG, "Notification pairing failed", throwable);
-                postResult("Pairing failed: " + safeMessage(throwable), true);
+                postResult(getString(R.string.pair_failed, safeMessage(throwable)), true);
             }
         });
     }
@@ -191,8 +192,8 @@ public final class PairingService extends Service {
 
     private Notification buildSearchingNotification() {
         return baseBuilder()
-                .setContentTitle("Searching for Wireless Debugging")
-                .setContentText("Open “Pair device with pairing code” in Android settings.")
+                .setContentTitle(getString(R.string.notification_searching_title))
+                .setContentText(getString(R.string.notification_searching_text))
                 .setOngoing(true)
                 .addAction(stopAction())
                 .build();
@@ -200,10 +201,10 @@ public final class PairingService extends Service {
 
     private Notification buildInputNotification(Endpoint endpoint) {
         return baseBuilder()
-                .setContentTitle("Wireless Debugging found")
-                .setContentText("Enter the six-digit pairing code here.")
+                .setContentTitle(getString(R.string.notification_found_title))
+                .setContentText(getString(R.string.notification_found_text))
                 .setStyle(new Notification.BigTextStyle()
-                        .bigText("Enter the six-digit pairing code in this notification."))
+                        .bigText(getString(R.string.notification_found_text)))
                 .setOngoing(true)
                 .addAction(replyAction(endpoint))
                 .addAction(stopAction())
@@ -212,8 +213,8 @@ public final class PairingService extends Service {
 
     private Notification buildWorkingNotification() {
         return baseBuilder()
-                .setContentTitle("Pairing Wireless Debugging")
-                .setContentText("Authenticating the local ADB connection…")
+                .setContentTitle(getString(R.string.notification_pairing_title))
+                .setContentText(getString(R.string.notification_pairing_text))
                 .setOngoing(true)
                 .build();
     }
@@ -228,7 +229,7 @@ public final class PairingService extends Service {
     @SuppressWarnings("deprecation")
     private Notification.Action replyAction(Endpoint endpoint) {
         RemoteInput remoteInput = new RemoteInput.Builder(REMOTE_INPUT_KEY)
-                .setLabel("Pairing code")
+                .setLabel(getString(R.string.pairing_code))
                 .build();
         Intent replyIntent = new Intent(this, PairingService.class)
                 .setAction(ACTION_REPLY)
@@ -239,7 +240,8 @@ public final class PairingService extends Service {
                 REQUEST_REPLY,
                 replyIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
-        return new Notification.Action.Builder(0, "Enter pairing code", pendingIntent)
+        return new Notification.Action.Builder(
+                0, getString(R.string.enter_pairing_code), pendingIntent)
                 .addRemoteInput(remoteInput)
                 .build();
     }
@@ -251,7 +253,7 @@ public final class PairingService extends Service {
                 REQUEST_STOP,
                 new Intent(this, PairingService.class).setAction(ACTION_STOP),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Action.Builder(0, "Stop", pendingIntent).build();
+        return new Notification.Action.Builder(0, getString(R.string.stop), pendingIntent).build();
     }
 
     private PendingIntent appContentIntent() {
@@ -270,7 +272,9 @@ public final class PairingService extends Service {
         stopSearch();
         stopForeground(STOP_FOREGROUND_DETACH);
         Notification result = baseBuilder()
-                .setContentTitle(error ? "Wireless Debugging pairing failed" : "Wireless Debugging paired")
+                .setContentTitle(error
+                        ? getString(R.string.notification_pair_failed)
+                        : getString(R.string.notification_paired))
                 .setContentText(message)
                 .setStyle(new Notification.BigTextStyle().bigText(message))
                 .setAutoCancel(true)
@@ -282,9 +286,9 @@ public final class PairingService extends Service {
     private void createChannel() {
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
-                "Wireless ADB pairing",
+                getString(R.string.pairing_channel_name),
                 NotificationManager.IMPORTANCE_HIGH);
-        channel.setDescription("Enter the Wireless Debugging pairing code from a notification");
+        channel.setDescription(getString(R.string.pairing_channel_description));
         channel.setSound(null, null);
         channel.setShowBadge(false);
         getSystemService(NotificationManager.class).createNotificationChannel(channel);

@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EdgeZ DevTools</string>
+    <string name="hero_title">EdgeZ DevTools</string>
+    <string name="hero_subtitle">Connectez un appareil Android physique à votre espace de travail cloud via le réseau maillé EdgeZ.</string>
+    <string name="connection_status">État de la connexion</string>
+    <string name="peer_not_joined">Non connecté à EdgeZ</string>
+    <string name="peer_id_format">ID du pair : %1$s</string>
+    <string name="proxy_state_disconnected">Proxy déconnecté</string>
+    <string name="proxy_detail_disconnected">Rejoignez le réseau EdgeZ, puis démarrez le proxy.</string>
+    <string name="proxy_state_connecting">Connexion à EdgeZ</string>
+    <string name="proxy_detail_connecting">Démarrage du client libp2p et détection de l’ADB local.</string>
+    <string name="proxy_state_mesh_online">Réseau en ligne</string>
+    <string name="proxy_detail_mesh_online">libp2p est connecté. Activez le débogage sans fil pour exposer ADB.</string>
+    <string name="proxy_state_adb_online">Proxy ADB en ligne</string>
+    <string name="proxy_detail_adb_online">L’espace de travail cloud peut accéder à cet appareil via libp2p.</string>
+    <string name="proxy_state_stopping">Arrêt du proxy</string>
+    <string name="proxy_detail_stopping">Fermeture de la route ADB et de la connexion libp2p.</string>
+    <string name="proxy_state_error">Le proxy nécessite votre attention</string>
+    <string name="proxy_detail_error">Le proxy n’a pas pu démarrer. Consultez les détails ci-dessous et réessayez.</string>
+    <string name="proxy_endpoint_format">Point de terminaison ADB local : 127.0.0.1:%1$d</string>
+
+    <string name="permissions_title">Autoriser la détection en arrière-plan</string>
+    <string name="permissions_description">Les notifications indiquent l’état du tunnel, le Wi-Fi à proximité détecte le débogage sans fil et l’accès illimité à la batterie maintient le relais en ligne.</string>
+    <string name="grant_permissions">Accorder les autorisations requises</string>
+    <string name="permission_notifications">Notifications</string>
+    <string name="permission_nearby_wifi">Wi-Fi à proximité</string>
+    <string name="permission_battery">Batterie sans restriction</string>
+    <string name="step_tab_permissions">Autorisations</string>
+    <string name="step_tab_join">Rejoindre</string>
+    <string name="step_tab_pair">Associer ADB</string>
+
+    <string name="join_title">Rejoindre votre projet EdgeZ</string>
+    <string name="join_description">Générez une clé d’accès sur la page de détails de l’appareil, puis scannez son code QR. Le numéro de série et la clé sont validés automatiquement.</string>
+    <string name="scan_qr_join">Scanner le code QR et rejoindre</string>
+
+    <string name="wireless_title">Associer le débogage sans fil</string>
+    <string name="wireless_description">Ouvrez « Associer l’appareil avec un code d’association » dans les paramètres Android, puis saisissez le code à six chiffres depuis la notification EdgeZ DevTools.</string>
+    <string name="pair_notification">Associer depuis la notification</string>
+
+    <string name="start_proxy">Démarrer le proxy</string>
+    <string name="stop_proxy">Arrêter le proxy</string>
+    <string name="retry_proxy">Réessayer le proxy</string>
+    <string name="proxy_button_stopping">Arrêt…</string>
+
+    <string name="status_ready">Prêt. Votre espace de travail cloud se connecte à adb-sidecar sur 127.0.0.1:5555.</string>
+    <string name="status_proxy_stop_requested">Arrêt du proxy demandé.</string>
+    <string name="status_scan_prompt">Pointez la caméra vers le code QR d’association affiché sur edgez.ai.</string>
+    <string name="status_scan_canceled">Scan du code QR annulé.</string>
+    <string name="status_scan_failed">Impossible de scanner le code QR : %1$s</string>
+    <string name="status_qr_empty">Le code QR scanné est vide.</string>
+    <string name="status_qr_fields_missing">Ce n’est pas un code QR d’association EdgeZ. Il doit contenir serial_number et join_key.</string>
+    <string name="status_qr_invalid">Ce n’est pas un code QR d’association EdgeZ valide.</string>
+    <string name="status_joining">Connexion au réseau EdgeZ…</string>
+    <string name="status_joined">Connexion réussie. La connexion au réseau démarre en arrière-plan. ID du pair : %1$s</string>
+    <string name="status_permissions_before_pairing">Accordez les autorisations de notification et de Wi-Fi à proximité avant de commencer l’association.</string>
+    <string name="status_join_before_pairing">Rejoignez le réseau EdgeZ avant l’association.</string>
+    <string name="status_pairing_search">Recherche d’association lancée. Ouvrez « Associer l’appareil avec un code d’association », puis répondez à la notification EdgeZ DevTools.</string>
+    <string name="status_join_before_proxy">Rejoignez d’abord le réseau EdgeZ.</string>
+    <string name="status_proxy_start">Démarrage du proxy demandé. Consultez la notification permanente pour connaître son état.</string>
+    <string name="status_all_permissions">Toutes les autorisations requises sont accordées.</string>
+    <string name="status_pairing_permissions">Autorisations d’association accordées. Autorisez maintenant l’utilisation illimitée de la batterie.</string>
+    <string name="status_permissions_needed">Les autorisations de Wi-Fi à proximité et de notification sont nécessaires pour la détection et un état fiable en arrière-plan.</string>
+    <string name="status_error">Erreur : %1$s</string>
+
+    <string name="wireless_required_title">Débogage sans fil requis</string>
+    <string name="wireless_enabled_missing">Le débogage sans fil est activé, mais son point de terminaison ADB est introuvable. Ouvrez le débogage sans fil et choisissez « Associer l’appareil avec un code d’association ».</string>
+    <string name="wireless_disabled">Activez le débogage sans fil, puis choisissez « Associer l’appareil avec un code d’association ». Gardez les paramètres ouverts jusqu’à ce qu’EdgeZ DevTools trouve le point de terminaison.</string>
+    <string name="open_wireless_debugging">Ouvrir le débogage sans fil</string>
+    <string name="later">Plus tard</string>
+
+    <string name="pair_discovery_failed">Échec de la détection d’association : %1$s</string>
+    <string name="pair_code_invalid">Le code d’association du débogage sans fil doit contenir six chiffres.</string>
+    <string name="pair_endpoint_expired">Le point de terminaison d’association du débogage sans fil n’est plus disponible.</string>
+    <string name="pair_waiting_endpoint">Débogage sans fil associé. En attente de son point de terminaison de connexion.</string>
+    <string name="pair_proxy_starting">Débogage sans fil associé. Le proxy ADB EdgeZ démarre.</string>
+    <string name="pair_failed">Échec de l’association : %1$s</string>
+    <string name="notification_searching_title">Recherche du débogage sans fil</string>
+    <string name="notification_searching_text">Ouvrez « Associer l’appareil avec un code d’association » dans les paramètres Android.</string>
+    <string name="notification_found_title">Débogage sans fil détecté</string>
+    <string name="notification_found_text">Saisissez le code d’association à six chiffres dans cette notification.</string>
+    <string name="notification_pairing_title">Association du débogage sans fil</string>
+    <string name="notification_pairing_text">Authentification de la connexion ADB locale…</string>
+    <string name="pairing_code">Code d’association</string>
+    <string name="enter_pairing_code">Saisir le code d’association</string>
+    <string name="stop">Arrêter</string>
+    <string name="notification_pair_failed">Échec de l’association du débogage sans fil</string>
+    <string name="notification_paired">Débogage sans fil associé</string>
+    <string name="pairing_channel_name">Association ADB sans fil</string>
+    <string name="pairing_channel_description">Saisissez le code d’association du débogage sans fil depuis une notification</string>
+
+    <string name="proxy_starting">Démarrage du proxy ADB EdgeZ…</string>
+    <string name="proxy_online_no_adb">EdgeZ en ligne • %1$s • activez le débogage sans fil pour ADB</string>
+    <string name="proxy_online">Proxy ADB en ligne • %1$s • adbd local : %2$d</string>
+    <string name="proxy_error">Erreur du proxy : %1$s</string>
+    <string name="proxy_stopping">Arrêt du proxy ADB EdgeZ…</string>
+    <string name="proxy_channel_name">Proxy ADB distant</string>
+    <string name="proxy_channel_description">Maintient le tunnel ADB EdgeZ disponible pour les espaces de travail Flutter et React Native</string>
+</resources>

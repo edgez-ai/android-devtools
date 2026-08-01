@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EdgeZ DevTools</string>
+    <string name="hero_title">EdgeZ DevTools</string>
+    <string name="hero_subtitle">Verbinde ein physisches Android-Gerät über das EdgeZ-Mesh mit deinem Cloud-Arbeitsbereich.</string>
+    <string name="connection_status">Verbindungsstatus</string>
+    <string name="peer_not_joined">Nicht mit EdgeZ verbunden</string>
+    <string name="peer_id_format">Peer-ID: %1$s</string>
+    <string name="proxy_state_disconnected">Proxy getrennt</string>
+    <string name="proxy_detail_disconnected">Tritt dem EdgeZ-Mesh bei und starte anschließend den Proxy.</string>
+    <string name="proxy_state_connecting">Verbindung mit EdgeZ wird hergestellt</string>
+    <string name="proxy_detail_connecting">Der libp2p-Client wird gestartet und lokales ADB wird gesucht.</string>
+    <string name="proxy_state_mesh_online">Mesh online</string>
+    <string name="proxy_detail_mesh_online">libp2p ist verbunden. Aktiviere WLAN-Debugging, um ADB bereitzustellen.</string>
+    <string name="proxy_state_adb_online">ADB-Proxy online</string>
+    <string name="proxy_detail_adb_online">Der Cloud-Arbeitsbereich kann dieses Gerät über libp2p erreichen.</string>
+    <string name="proxy_state_stopping">Proxy wird beendet</string>
+    <string name="proxy_detail_stopping">ADB-Route und libp2p-Verbindung werden geschlossen.</string>
+    <string name="proxy_state_error">Proxy erfordert Aufmerksamkeit</string>
+    <string name="proxy_detail_error">Der Proxy konnte nicht gestartet werden. Prüfe die Details unten und versuche es erneut.</string>
+    <string name="proxy_endpoint_format">Lokaler ADB-Endpunkt: 127.0.0.1:%1$d</string>
+
+    <string name="permissions_title">Hintergrunderkennung zulassen</string>
+    <string name="permissions_description">Benachrichtigungen zeigen den Tunnelstatus, Geräte in der Nähe finden WLAN-Debugging und uneingeschränkte Akkunutzung hält das Relay online.</string>
+    <string name="grant_permissions">Erforderliche Berechtigungen erteilen</string>
+    <string name="permission_notifications">Benachrichtigungen</string>
+    <string name="permission_nearby_wifi">WLAN-Geräte in der Nähe</string>
+    <string name="permission_battery">Akku nicht eingeschränkt</string>
+    <string name="step_tab_permissions">Berechtigungen</string>
+    <string name="step_tab_join">Beitreten</string>
+    <string name="step_tab_pair">ADB koppeln</string>
+
+    <string name="join_title">Deinem EdgeZ-Projekt beitreten</string>
+    <string name="join_description">Erzeuge auf der Gerätedetailseite einen Beitrittsschlüssel und scanne den QR-Code. Seriennummer und Schlüssel werden automatisch geprüft.</string>
+    <string name="scan_qr_join">QR-Code scannen und beitreten</string>
+
+    <string name="wireless_title">WLAN-Debugging koppeln</string>
+    <string name="wireless_description">Öffne in den Android-Einstellungen „Gerät mit Kopplungscode koppeln“ und gib dann den sechsstelligen Code aus der Android-DevTools-Benachrichtigung ein.</string>
+    <string name="pair_notification">Über Benachrichtigung koppeln</string>
+
+    <string name="start_proxy">Proxy starten</string>
+    <string name="stop_proxy">Proxy stoppen</string>
+    <string name="retry_proxy">Proxy erneut versuchen</string>
+    <string name="proxy_button_stopping">Wird beendet…</string>
+
+    <string name="status_ready">Bereit. Dein Cloud-Arbeitsbereich verbindet sich unter 127.0.0.1:5555 mit adb-sidecar.</string>
+    <string name="status_proxy_stop_requested">Beenden des Proxys angefordert.</string>
+    <string name="status_scan_prompt">Richte die Kamera auf den auf edgez.ai angezeigten Kopplungs-QR-Code.</string>
+    <string name="status_scan_canceled">QR-Code-Scan abgebrochen.</string>
+    <string name="status_scan_failed">QR-Code konnte nicht gescannt werden: %1$s</string>
+    <string name="status_qr_empty">Der gescannte QR-Code ist leer.</string>
+    <string name="status_qr_fields_missing">Dies ist kein EdgeZ-Kopplungs-QR-Code. Er muss serial_number und join_key enthalten.</string>
+    <string name="status_qr_invalid">Dies ist kein gültiger EdgeZ-Kopplungs-QR-Code.</string>
+    <string name="status_joining">Beitritt zum EdgeZ-Netzwerk…</string>
+    <string name="status_joined">Beitritt erfolgreich. Die Mesh-Verbindung wird im Hintergrund gestartet. Peer-ID: %1$s</string>
+    <string name="status_permissions_before_pairing">Erteile vor dem Koppeln die Berechtigungen für Benachrichtigungen und WLAN-Geräte in der Nähe.</string>
+    <string name="status_join_before_pairing">Tritt vor dem Koppeln dem EdgeZ-Netzwerk bei.</string>
+    <string name="status_pairing_search">Kopplungssuche gestartet. Öffne „Gerät mit Kopplungscode koppeln“ und antworte auf die Android-DevTools-Benachrichtigung.</string>
+    <string name="status_join_before_proxy">Tritt zuerst dem EdgeZ-Netzwerk bei.</string>
+    <string name="status_proxy_start">Start des Proxys angefordert. Prüfe den Status in der dauerhaften Benachrichtigung.</string>
+    <string name="status_all_permissions">Alle erforderlichen Berechtigungen wurden erteilt.</string>
+    <string name="status_pairing_permissions">Kopplungsberechtigungen erteilt. Erlaube als Nächstes uneingeschränkte Akkunutzung.</string>
+    <string name="status_permissions_needed">Für die Erkennung und einen zuverlässigen Hintergrundstatus sind Berechtigungen für WLAN-Geräte in der Nähe und Benachrichtigungen erforderlich.</string>
+    <string name="status_error">Fehler: %1$s</string>
+
+    <string name="wireless_required_title">WLAN-Debugging erforderlich</string>
+    <string name="wireless_enabled_missing">WLAN-Debugging ist aktiviert, aber der ADB-Endpunkt wurde nicht gefunden. Öffne WLAN-Debugging und wähle „Gerät mit Kopplungscode koppeln“.</string>
+    <string name="wireless_disabled">Aktiviere WLAN-Debugging und wähle „Gerät mit Kopplungscode koppeln“. Lass die Einstellungen geöffnet, bis EdgeZ DevTools den Kopplungsendpunkt findet.</string>
+    <string name="open_wireless_debugging">WLAN-Debugging öffnen</string>
+    <string name="later">Später</string>
+
+    <string name="pair_discovery_failed">Kopplungssuche fehlgeschlagen: %1$s</string>
+    <string name="pair_code_invalid">Der Kopplungscode für WLAN-Debugging muss aus sechs Ziffern bestehen.</string>
+    <string name="pair_endpoint_expired">Der Kopplungsendpunkt für WLAN-Debugging ist nicht mehr verfügbar.</string>
+    <string name="pair_waiting_endpoint">WLAN-Debugging gekoppelt. Warten auf den Verbindungsendpunkt.</string>
+    <string name="pair_proxy_starting">WLAN-Debugging gekoppelt. Der EdgeZ-ADB-Proxy wird gestartet.</string>
+    <string name="pair_failed">Kopplung fehlgeschlagen: %1$s</string>
+    <string name="notification_searching_title">WLAN-Debugging wird gesucht</string>
+    <string name="notification_searching_text">Öffne in den Android-Einstellungen „Gerät mit Kopplungscode koppeln“.</string>
+    <string name="notification_found_title">WLAN-Debugging gefunden</string>
+    <string name="notification_found_text">Gib den sechsstelligen Kopplungscode in dieser Benachrichtigung ein.</string>
+    <string name="notification_pairing_title">WLAN-Debugging wird gekoppelt</string>
+    <string name="notification_pairing_text">Die lokale ADB-Verbindung wird authentifiziert…</string>
+    <string name="pairing_code">Kopplungscode</string>
+    <string name="enter_pairing_code">Kopplungscode eingeben</string>
+    <string name="stop">Stoppen</string>
+    <string name="notification_pair_failed">Kopplung von WLAN-Debugging fehlgeschlagen</string>
+    <string name="notification_paired">WLAN-Debugging gekoppelt</string>
+    <string name="pairing_channel_name">Drahtlose ADB-Kopplung</string>
+    <string name="pairing_channel_description">Kopplungscode für WLAN-Debugging über eine Benachrichtigung eingeben</string>
+
+    <string name="proxy_starting">EdgeZ-ADB-Proxy wird gestartet…</string>
+    <string name="proxy_online_no_adb">EdgeZ online • %1$s • WLAN-Debugging für ADB aktivieren</string>
+    <string name="proxy_online">ADB-Proxy online • %1$s • lokales adbd: %2$d</string>
+    <string name="proxy_error">Proxy-Fehler: %1$s</string>
+    <string name="proxy_stopping">EdgeZ-ADB-Proxy wird beendet…</string>
+    <string name="proxy_channel_name">Remote-ADB-Proxy</string>
+    <string name="proxy_channel_description">Hält den EdgeZ-ADB-Tunnel für Flutter- und React-Native-Arbeitsbereiche verfügbar</string>
+</resources>

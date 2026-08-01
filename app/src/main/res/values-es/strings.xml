@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EdgeZ DevTools</string>
+    <string name="hero_title">EdgeZ DevTools</string>
+    <string name="hero_subtitle">Conecta un dispositivo Android físico a tu espacio de trabajo en la nube mediante la red mallada EdgeZ.</string>
+    <string name="connection_status">Estado de conexión</string>
+    <string name="peer_not_joined">Sin conexión a EdgeZ</string>
+    <string name="peer_id_format">ID del par: %1$s</string>
+    <string name="proxy_state_disconnected">Proxy desconectado</string>
+    <string name="proxy_detail_disconnected">Únete a la red EdgeZ y después inicia el proxy.</string>
+    <string name="proxy_state_connecting">Conectando con EdgeZ</string>
+    <string name="proxy_detail_connecting">Iniciando el cliente libp2p y detectando el ADB local.</string>
+    <string name="proxy_state_mesh_online">Red en línea</string>
+    <string name="proxy_detail_mesh_online">libp2p está conectado. Activa la depuración inalámbrica para exponer ADB.</string>
+    <string name="proxy_state_adb_online">Proxy ADB en línea</string>
+    <string name="proxy_detail_adb_online">El espacio de trabajo en la nube puede acceder a este dispositivo mediante libp2p.</string>
+    <string name="proxy_state_stopping">Deteniendo el proxy</string>
+    <string name="proxy_detail_stopping">Cerrando la ruta ADB y la conexión libp2p.</string>
+    <string name="proxy_state_error">El proxy requiere atención</string>
+    <string name="proxy_detail_error">No se pudo iniciar el proxy. Revisa los detalles siguientes e inténtalo de nuevo.</string>
+    <string name="proxy_endpoint_format">Punto de conexión ADB local: 127.0.0.1:%1$d</string>
+
+    <string name="permissions_title">Permitir detección en segundo plano</string>
+    <string name="permissions_description">Las notificaciones muestran el estado del túnel, el Wi-Fi cercano detecta la depuración inalámbrica y el uso de batería sin restricciones mantiene el relé conectado.</string>
+    <string name="grant_permissions">Conceder permisos necesarios</string>
+    <string name="permission_notifications">Notificaciones</string>
+    <string name="permission_nearby_wifi">Wi-Fi cercano</string>
+    <string name="permission_battery">Batería sin restricciones</string>
+    <string name="step_tab_permissions">Permisos</string>
+    <string name="step_tab_join">Unirse</string>
+    <string name="step_tab_pair">Vincular ADB</string>
+
+    <string name="join_title">Únete a tu proyecto EdgeZ</string>
+    <string name="join_description">Genera una clave de acceso en la página de detalles del dispositivo y escanea su código QR. El número de serie y la clave se validan automáticamente.</string>
+    <string name="scan_qr_join">Escanear QR y unirse</string>
+
+    <string name="wireless_title">Vincular depuración inalámbrica</string>
+    <string name="wireless_description">Abre «Vincular dispositivo con código de vinculación» en los ajustes de Android e introduce el código de seis dígitos desde la notificación de EdgeZ DevTools.</string>
+    <string name="pair_notification">Vincular desde la notificación</string>
+
+    <string name="start_proxy">Iniciar proxy</string>
+    <string name="stop_proxy">Detener proxy</string>
+    <string name="retry_proxy">Reintentar proxy</string>
+    <string name="proxy_button_stopping">Deteniendo…</string>
+
+    <string name="status_ready">Listo. Tu espacio de trabajo en la nube se conecta a adb-sidecar en 127.0.0.1:5555.</string>
+    <string name="status_proxy_stop_requested">Se solicitó detener el proxy.</string>
+    <string name="status_scan_prompt">Apunta la cámara al código QR de vinculación mostrado en edgez.ai.</string>
+    <string name="status_scan_canceled">Escaneo del código QR cancelado.</string>
+    <string name="status_scan_failed">No se pudo escanear el código QR: %1$s</string>
+    <string name="status_qr_empty">El código QR escaneado está vacío.</string>
+    <string name="status_qr_fields_missing">Este no es un código QR de vinculación de EdgeZ. Debe contener serial_number y join_key.</string>
+    <string name="status_qr_invalid">Este no es un código QR de vinculación de EdgeZ válido.</string>
+    <string name="status_joining">Uniéndose a la red EdgeZ…</string>
+    <string name="status_joined">Conexión completada. La conexión de red se está iniciando en segundo plano. ID del par: %1$s</string>
+    <string name="status_permissions_before_pairing">Concede los permisos de notificaciones y Wi-Fi cercano antes de iniciar la vinculación.</string>
+    <string name="status_join_before_pairing">Únete a la red EdgeZ antes de vincular.</string>
+    <string name="status_pairing_search">Se inició la búsqueda de vinculación. Abre «Vincular dispositivo con código de vinculación» y responde a la notificación de EdgeZ DevTools.</string>
+    <string name="status_join_before_proxy">Primero únete a la red EdgeZ.</string>
+    <string name="status_proxy_start">Se solicitó iniciar el proxy. Consulta su estado en la notificación permanente.</string>
+    <string name="status_all_permissions">Se han concedido todos los permisos necesarios.</string>
+    <string name="status_pairing_permissions">Permisos de vinculación concedidos. Ahora permite el uso de batería sin restricciones.</string>
+    <string name="status_permissions_needed">Los permisos de Wi-Fi cercano y notificaciones son necesarios para la detección y un estado fiable en segundo plano.</string>
+    <string name="status_error">Error: %1$s</string>
+
+    <string name="wireless_required_title">Se requiere depuración inalámbrica</string>
+    <string name="wireless_enabled_missing">La depuración inalámbrica está activa, pero no se encontró su punto de conexión ADB. Abre la depuración inalámbrica y elige «Vincular dispositivo con código de vinculación».</string>
+    <string name="wireless_disabled">Activa la depuración inalámbrica y elige «Vincular dispositivo con código de vinculación». Mantén abiertos los ajustes hasta que EdgeZ DevTools encuentre el punto de vinculación.</string>
+    <string name="open_wireless_debugging">Abrir depuración inalámbrica</string>
+    <string name="later">Más tarde</string>
+
+    <string name="pair_discovery_failed">Falló la detección de vinculación: %1$s</string>
+    <string name="pair_code_invalid">El código de vinculación de la depuración inalámbrica debe contener seis dígitos.</string>
+    <string name="pair_endpoint_expired">El punto de vinculación de la depuración inalámbrica ya no está disponible.</string>
+    <string name="pair_waiting_endpoint">Depuración inalámbrica vinculada. Esperando su punto de conexión.</string>
+    <string name="pair_proxy_starting">Depuración inalámbrica vinculada. El proxy ADB de EdgeZ se está iniciando.</string>
+    <string name="pair_failed">Error de vinculación: %1$s</string>
+    <string name="notification_searching_title">Buscando depuración inalámbrica</string>
+    <string name="notification_searching_text">Abre «Vincular dispositivo con código de vinculación» en los ajustes de Android.</string>
+    <string name="notification_found_title">Depuración inalámbrica encontrada</string>
+    <string name="notification_found_text">Introduce el código de vinculación de seis dígitos en esta notificación.</string>
+    <string name="notification_pairing_title">Vinculando depuración inalámbrica</string>
+    <string name="notification_pairing_text">Autenticando la conexión ADB local…</string>
+    <string name="pairing_code">Código de vinculación</string>
+    <string name="enter_pairing_code">Introducir código de vinculación</string>
+    <string name="stop">Detener</string>
+    <string name="notification_pair_failed">Falló la vinculación de la depuración inalámbrica</string>
+    <string name="notification_paired">Depuración inalámbrica vinculada</string>
+    <string name="pairing_channel_name">Vinculación ADB inalámbrica</string>
+    <string name="pairing_channel_description">Introduce el código de vinculación de la depuración inalámbrica desde una notificación</string>
+
+    <string name="proxy_starting">Iniciando el proxy ADB de EdgeZ…</string>
+    <string name="proxy_online_no_adb">EdgeZ en línea • %1$s • activa la depuración inalámbrica para ADB</string>
+    <string name="proxy_online">Proxy ADB en línea • %1$s • adbd local: %2$d</string>
+    <string name="proxy_error">Error del proxy: %1$s</string>
+    <string name="proxy_stopping">Deteniendo el proxy ADB de EdgeZ…</string>
+    <string name="proxy_channel_name">Proxy ADB remoto</string>
+    <string name="proxy_channel_description">Mantiene disponible el túnel ADB de EdgeZ para espacios de trabajo de Flutter y React Native</string>
+</resources>

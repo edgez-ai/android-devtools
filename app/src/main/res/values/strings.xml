@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Android DevTools</string>
-    <string name="hero_title">Android DevTools</string>
+    <string name="app_name">EdgeZ DevTools</string>
+    <string name="hero_title">EdgeZ DevTools</string>
     <string name="hero_subtitle">Connect a physical Android device to your cloud workspace through the EdgeZ mesh.</string>
     <string name="connection_status">Connection status</string>
     <string name="peer_not_joined">Not connected to EdgeZ</string>
@@ -35,10 +35,10 @@
     <string name="scan_qr_join">Scan QR code &amp; join</string>
 
     <string name="wireless_title">Pair Wireless Debugging</string>
-    <string name="wireless_description">Open “Pair device with pairing code” in Android settings, then enter the six-digit code from the Android DevTools notification.</string>
+    <string name="wireless_description">Open “Pair device with pairing code” in Android settings, then enter the six-digit code from the EdgeZ DevTools notification.</string>
     <string name="pair_notification">Pair from notification</string>
 
-    <string name="start_proxy">Refresh ADB &amp; start</string>
+    <string name="start_proxy">Start proxy</string>
     <string name="stop_proxy">Stop proxy</string>
     <string name="retry_proxy">Retry proxy</string>
     <string name="proxy_button_stopping">Stopping…</string>
@@ -55,7 +55,7 @@
     <string name="status_joined">Joined successfully. The mesh connection is starting in the background. Peer ID: %1$s</string>
     <string name="status_permissions_before_pairing">Grant notification and Nearby Wi-Fi permissions before starting pairing.</string>
     <string name="status_join_before_pairing">Join the EdgeZ network before pairing.</string>
-    <string name="status_pairing_search">Pairing search started. Open “Pair device with pairing code”, then reply to the Android DevTools notification.</string>
+    <string name="status_pairing_search">Pairing search started. Open “Pair device with pairing code”, then reply to the EdgeZ DevTools notification.</string>
     <string name="status_join_before_proxy">Join the EdgeZ network first.</string>
     <string name="status_proxy_start">Proxy start requested. Check the persistent notification for status.</string>
     <string name="status_all_permissions">All required permissions are granted.</string>
@@ -65,7 +65,7 @@
 
     <string name="wireless_required_title">Wireless Debugging required</string>
     <string name="wireless_enabled_missing">Wireless Debugging is enabled, but its ADB endpoint was not found. Open Wireless Debugging and choose “Pair device with pairing code”.</string>
-    <string name="wireless_disabled">Turn on Wireless Debugging, then choose “Pair device with pairing code”. Keep Settings open until Android DevTools finds the pairing endpoint.</string>
+    <string name="wireless_disabled">Turn on Wireless Debugging, then choose “Pair device with pairing code”. Keep Settings open until EdgeZ DevTools finds the pairing endpoint.</string>
     <string name="open_wireless_debugging">Open Wireless Debugging</string>
     <string name="later">Later</string>
 
