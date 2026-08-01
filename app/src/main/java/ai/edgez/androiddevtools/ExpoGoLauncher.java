@@ -22,17 +22,16 @@ final class ExpoGoLauncher {
         if (launch != null) {
             launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(launch);
-            return "Expo Go opened. Start the project from the remote IDE to load it.";
+            return context.getString(R.string.expo_opened);
         }
 
         Intent install = new Intent(Intent.ACTION_VIEW, INSTALL_URI)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             context.startActivity(install);
-            return "Choose the Expo Go version matching your project, install it, then return here.";
+            return context.getString(R.string.expo_install_started);
         } catch (ActivityNotFoundException exception) {
-            return "No browser is available. From the remote IDE, run npx expo start --android; "
-                    + "Expo CLI can install the matching Expo Go build through ADB.";
+            return context.getString(R.string.expo_no_browser);
         }
     }
 }

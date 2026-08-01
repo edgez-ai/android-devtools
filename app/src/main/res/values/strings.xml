@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Android DevTools</string>
+    <string name="hero_eyebrow">EDGEZ • PHYSICAL DEVICE</string>
+    <string name="hero_title">Android DevTools</string>
+    <string name="hero_subtitle">Connect a physical Android device to your cloud workspace through the EdgeZ mesh.</string>
+    <string name="connection_status">Connection status</string>
+    <string name="peer_not_joined">Not connected to EdgeZ</string>
+    <string name="peer_id_format">Peer ID: %1$s</string>
+    <string name="proxy_state_disconnected">Proxy disconnected</string>
+    <string name="proxy_detail_disconnected">Join the EdgeZ mesh, then start the proxy.</string>
+    <string name="proxy_state_connecting">Connecting to EdgeZ</string>
+    <string name="proxy_detail_connecting">Starting the libp2p client and discovering local ADB.</string>
+    <string name="proxy_state_mesh_online">Mesh online</string>
+    <string name="proxy_detail_mesh_online">libp2p is connected. Enable Wireless Debugging to expose ADB.</string>
+    <string name="proxy_state_adb_online">ADB proxy online</string>
+    <string name="proxy_detail_adb_online">The cloud workspace can reach this device through libp2p.</string>
+    <string name="proxy_state_stopping">Stopping proxy</string>
+    <string name="proxy_detail_stopping">Closing the ADB route and libp2p connection.</string>
+    <string name="proxy_state_error">Proxy needs attention</string>
+    <string name="proxy_detail_error">The proxy could not start. Review the detail below and try again.</string>
+    <string name="proxy_endpoint_format">Local ADB endpoint: 127.0.0.1:%1$d</string>
+
+    <string name="permissions_title">Allow background discovery</string>
+    <string name="permissions_description">Notifications show tunnel health, Nearby Wi-Fi finds Wireless Debugging, and unrestricted battery access keeps the relay online.</string>
+    <string name="grant_permissions">Grant required permissions</string>
+    <string name="permission_notifications">Notifications</string>
+    <string name="permission_nearby_wifi">Nearby Wi-Fi</string>
+    <string name="permission_battery">Battery unrestricted</string>
+
+    <string name="join_title">Join your EdgeZ project</string>
+    <string name="join_description">Generate a join key on the device detail page, then scan its QR code. The serial and key are validated automatically.</string>
+    <string name="scan_qr_join">Scan QR code &amp; join</string>
+
+    <string name="wireless_title">Pair Wireless Debugging</string>
+    <string name="wireless_description">Open “Pair device with pairing code” in Android settings, then enter the six-digit code from the Android DevTools notification.</string>
+    <string name="pair_notification">Pair from notification</string>
+
+    <string name="developer_tools_title">Developer tools</string>
+    <string name="expo_description">Open the Expo Go build that matches your remote React Native project.</string>
+    <string name="open_expo_go">Open Expo Go</string>
+    <string name="install_expo_go">Install Expo Go</string>
+    <string name="proxy_description">Refresh the local ADB target or stop the background tunnel.</string>
+    <string name="start_proxy">Refresh ADB &amp; start</string>
+    <string name="stop_proxy">Stop proxy</string>
+
+    <string name="status_ready">Ready. Your cloud workspace connects to adb-sidecar at 127.0.0.1:5555.</string>
+    <string name="status_proxy_stop_requested">Proxy stop requested.</string>
+    <string name="status_scan_prompt">Point the camera at the pairing QR code shown on edgez.ai.</string>
+    <string name="status_scan_canceled">QR code scan canceled.</string>
+    <string name="status_scan_failed">Could not scan QR code: %1$s</string>
+    <string name="status_qr_empty">The scanned QR code is empty.</string>
+    <string name="status_qr_fields_missing">This is not an EdgeZ pairing QR code. It must contain serial_number and join_key.</string>
+    <string name="status_qr_invalid">This is not a valid EdgeZ pairing QR code.</string>
+    <string name="status_joining">Joining the EdgeZ network…</string>
+    <string name="status_joined">Joined successfully. The mesh connection is starting in the background. Peer ID: %1$s</string>
+    <string name="status_permissions_before_pairing">Grant notification and Nearby Wi-Fi permissions before starting pairing.</string>
+    <string name="status_join_before_pairing">Join the EdgeZ network before pairing.</string>
+    <string name="status_pairing_search">Pairing search started. Open “Pair device with pairing code”, then reply to the Android DevTools notification.</string>
+    <string name="status_join_before_proxy">Join the EdgeZ network first.</string>
+    <string name="status_proxy_start">Proxy start requested. Check the persistent notification for status.</string>
+    <string name="status_all_permissions">All required permissions are granted.</string>
+    <string name="status_pairing_permissions">Pairing permissions granted. Allow unrestricted battery use next.</string>
+    <string name="status_permissions_needed">Nearby Wi-Fi and notification permissions are needed for discovery and reliable background status.</string>
+    <string name="status_error">Error: %1$s</string>
+
+    <string name="wireless_required_title">Wireless Debugging required</string>
+    <string name="wireless_enabled_missing">Wireless Debugging is enabled, but its ADB endpoint was not found. Open Wireless Debugging and choose “Pair device with pairing code”.</string>
+    <string name="wireless_disabled">Turn on Wireless Debugging, then choose “Pair device with pairing code”. Keep Settings open until Android DevTools finds the pairing endpoint.</string>
+    <string name="open_wireless_debugging">Open Wireless Debugging</string>
+    <string name="later">Later</string>
+
+    <string name="expo_opened">Expo Go opened. Start the project from the remote IDE to load it.</string>
+    <string name="expo_install_started">Choose the Expo Go version matching your project, install it, then return here.</string>
+    <string name="expo_no_browser">No browser is available. From the remote IDE, run npx expo start --android; Expo CLI can install the matching Expo Go build through ADB.</string>
+
+    <string name="pair_discovery_failed">Pairing discovery failed: %1$s</string>
+    <string name="pair_code_invalid">The Wireless Debugging pairing code must contain six digits.</string>
+    <string name="pair_endpoint_expired">The Wireless Debugging pairing endpoint is no longer available.</string>
+    <string name="pair_waiting_endpoint">Wireless Debugging paired. Waiting for its connect endpoint.</string>
+    <string name="pair_proxy_starting">Wireless Debugging paired. The EdgeZ ADB proxy is starting.</string>
+    <string name="pair_failed">Pairing failed: %1$s</string>
+    <string name="notification_searching_title">Searching for Wireless Debugging</string>
+    <string name="notification_searching_text">Open “Pair device with pairing code” in Android settings.</string>
+    <string name="notification_found_title">Wireless Debugging found</string>
+    <string name="notification_found_text">Enter the six-digit pairing code in this notification.</string>
+    <string name="notification_pairing_title">Pairing Wireless Debugging</string>
+    <string name="notification_pairing_text">Authenticating the local ADB connection…</string>
+    <string name="pairing_code">Pairing code</string>
+    <string name="enter_pairing_code">Enter pairing code</string>
+    <string name="stop">Stop</string>
+    <string name="notification_pair_failed">Wireless Debugging pairing failed</string>
+    <string name="notification_paired">Wireless Debugging paired</string>
+    <string name="pairing_channel_name">Wireless ADB pairing</string>
+    <string name="pairing_channel_description">Enter the Wireless Debugging pairing code from a notification</string>
+
+    <string name="proxy_starting">Starting EdgeZ ADB proxy…</string>
+    <string name="proxy_online_no_adb">EdgeZ online • %1$s • enable Wireless Debugging for ADB</string>
+    <string name="proxy_online">ADB proxy online • %1$s • local adbd :%2$d</string>
+    <string name="proxy_error">Proxy error: %1$s</string>
+    <string name="proxy_stopping">Stopping EdgeZ ADB proxy…</string>
+    <string name="proxy_channel_name">Remote ADB proxy</string>
+    <string name="proxy_channel_description">Keeps the EdgeZ ADB tunnel available to Flutter and React Native workspaces</string>
+</resources>

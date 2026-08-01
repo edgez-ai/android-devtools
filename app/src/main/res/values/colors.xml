@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="edgez_blue">#1859C9</color>
+    <color name="edgez_blue_dark">#0A2F73</color>
+    <color name="edgez_blue_soft">#EAF1FF</color>
+    <color name="edgez_background">#F4F7FC</color>
+    <color name="edgez_surface">#FFFFFFFF</color>
+    <color name="edgez_text">#13213C</color>
+    <color name="edgez_text_muted">#60708F</color>
+    <color name="edgez_success">#18794E</color>
+    <color name="edgez_warning">#A15C00</color>
+    <color name="edgez_error">#C73535</color>
+    <color name="edgez_connecting">#3478E5</color>
+    <color name="edgez_offline">#8C98AD</color>
+    <color name="edgez_status_background">#EEF4FF</color>
+</resources>

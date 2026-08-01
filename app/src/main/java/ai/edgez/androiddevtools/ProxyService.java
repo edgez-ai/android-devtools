@@ -38,7 +38,8 @@ public final class ProxyService extends Service {
         super.onCreate();
         NativeBridge.initialize(this);
         createNotificationChannel();
-        Notification notification = buildNotification("Starting libp2p ADB proxy…");
+        ProxyStatus.publish(this, ProxyStatus.CONNECTING, "");
+        Notification notification = buildNotification(getString(R.string.proxy_starting));
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(
                     NOTIFICATION_ID,
@@ -74,6 +75,9 @@ public final class ProxyService extends Service {
         stopUsbIpServer();
         stopNativeClient();
         stopForeground(STOP_FOREGROUND_REMOVE);
+        if (stopping) {
+            ProxyStatus.publish(this, ProxyStatus.DISCONNECTED, "");
+        }
         super.onDestroy();
     }
 
@@ -89,6 +93,7 @@ public final class ProxyService extends Service {
         try {
             if (!ConfigStore.isConfigured(this)) {
                 Log.i(TAG, "No stored libp2p config; stopping proxy service");
+                ProxyStatus.publish(this, ProxyStatus.DISCONNECTED, "");
                 stopSelf();
                 return;
             }
@@ -128,17 +133,20 @@ public final class ProxyService extends Service {
                 startLocalScrcpy();
             }
             if (endpoint == null) {
-                updateNotification(
-                        "Libp2p online • " + ConfigStore.peerId(this)
-                                + " • enable Wireless Debugging for ADB");
+                ProxyStatus.publish(this, ProxyStatus.MESH_ONLINE, "");
+                updateNotification(getString(
+                        R.string.proxy_online_no_adb, ConfigStore.peerId(this)));
             } else {
-                updateNotification(
-                        "ADB proxy online • " + ConfigStore.peerId(this)
-                                + " • local adbd :" + endpoint.port);
+                ProxyStatus.publish(this, ProxyStatus.ADB_ONLINE,
+                        getString(R.string.proxy_endpoint_format, endpoint.port));
+                updateNotification(getString(
+                        R.string.proxy_online, ConfigStore.peerId(this), endpoint.port));
             }
         } catch (Throwable throwable) {
             Log.e(TAG, "Unable to start proxy", throwable);
-            updateNotification("Proxy error: " + safeMessage(throwable));
+            String message = safeMessage(throwable);
+            ProxyStatus.publish(this, ProxyStatus.ERROR, message);
+            updateNotification(getString(R.string.proxy_error, message));
         }
     }
 
@@ -147,7 +155,8 @@ public final class ProxyService extends Service {
             return;
         }
         stopping = true;
-        updateNotification("Stopping libp2p ADB proxy…");
+        ProxyStatus.publish(this, ProxyStatus.STOPPING, "");
+        updateNotification(getString(R.string.proxy_stopping));
         executor.execute(() -> {
             stopNativeClient();
             stopSelf();
@@ -258,9 +267,9 @@ public final class ProxyService extends Service {
 
     private void createNotificationChannel() {
         NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID, "Remote ADB proxy", NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription(
-                "Keeps the libp2p ADB tunnel available to Flutter and React Native workspaces");
+                CHANNEL_ID, getString(R.string.proxy_channel_name),
+                NotificationManager.IMPORTANCE_LOW);
+        channel.setDescription(getString(R.string.proxy_channel_description));
         getSystemService(NotificationManager.class).createNotificationChannel(channel);
     }
 
@@ -275,7 +284,7 @@ public final class ProxyService extends Service {
         Notification.Builder builder = new Notification.Builder(this, CHANNEL_ID);
         return builder
                 .setSmallIcon(android.R.drawable.stat_sys_upload_done)
-                .setContentTitle("Android DevTools")
+                .setContentTitle(getString(R.string.app_name))
                 .setContentText(text)
                 .setStyle(new Notification.BigTextStyle().bigText(text))
                 .setContentIntent(pendingIntent)
