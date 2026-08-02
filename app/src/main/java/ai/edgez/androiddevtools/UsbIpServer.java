@@ -25,6 +25,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -170,11 +171,16 @@ final class UsbIpServer implements AutoCloseable {
                     String requestedBusId = cString(rawBusId);
                     UsbDevice device = findDevice(requestedBusId);
                     if (device == null || !usbManager.hasPermission(device)) {
+                        Log.w(TAG, "USB/IP import unavailable: busid=" + requestedBusId
+                                + " found=" + (device != null)
+                                + " permission=" + (device != null
+                                && usbManager.hasPermission(device)));
                         writeCommon(output, version, OP_REP_IMPORT, ST_NA);
                         continue;
                     }
                     UsbDeviceConnection connection = usbManager.openDevice(device);
                     if (connection == null) {
+                        Log.w(TAG, "USB/IP could not open device: busid=" + requestedBusId);
                         writeCommon(output, version, OP_REP_IMPORT, ST_NA);
                         continue;
                     }
@@ -183,12 +189,15 @@ final class UsbIpServer implements AutoCloseable {
                     deviceSessions.add(session);
                     try {
                         if (!session.prepare()) {
+                            Log.w(TAG, "USB/IP could not claim device: busid="
+                                    + requestedBusId);
                             writeCommon(output, version, OP_REP_IMPORT, ST_NA);
                             continue;
                         }
                         writeCommon(output, version, OP_REP_IMPORT, ST_OK);
                         writeDevice(output, device, connection, false);
                         output.flush();
+                        Log.i(TAG, "USB/IP device imported: " + deviceLabel(device));
                         session.run();
                     } finally {
                         deviceSessions.remove(session);
@@ -222,15 +231,14 @@ final class UsbIpServer implements AutoCloseable {
         }
         writeCommon(output, version, OP_REP_DEVLIST, ST_OK);
         output.writeInt(devices.size());
+        Log.i(TAG, "USB/IP device list requested; exported=" + devices.size());
         for (UsbDevice device : devices) {
-            UsbDeviceConnection connection = usbManager.openDevice(device);
-            try {
-                writeDevice(output, device, connection, true);
-            } finally {
-                if (connection != null) {
-                    connection.close();
-                }
-            }
+            // DEVLIST only needs Android's immutable device/interface
+            // metadata. Opening and closing another connection here can
+            // disturb an imported serial device while esptool is toggling its
+            // modem-control lines. bcdDevice is optional for discovery, so
+            // leave it zero and never touch the active USB handle.
+            writeDevice(output, device, null, true);
         }
         output.flush();
     }
@@ -283,9 +291,18 @@ final class UsbIpServer implements AutoCloseable {
         private final DataOutputStream output;
         private final UsbDevice device;
         private final UsbDeviceConnection connection;
-        private final ExecutorService transfers = Executors.newFixedThreadPool(16);
+        // USB host controllers preserve URB order for each endpoint. Running
+        // every submit on a shared pool breaks that guarantee: serial DTR/RTS
+        // control requests can be applied out of order and leave ESP boards in
+        // normal boot mode instead of the ROM downloader. Keep a FIFO worker
+        // per endpoint. Endpoint zero shares one queue across both directions;
+        // bulk IN and OUT stay independent so reads cannot block writes.
+        private final Map<Integer, ExecutorService> transferQueues =
+                new ConcurrentHashMap<>();
         private final Map<Integer, Future<?>> active = new ConcurrentHashMap<>();
         private final Map<Integer, UsbEndpoint> endpoints = new ConcurrentHashMap<>();
+        private final Map<Integer, ArrayDeque<byte[]>> pendingInput =
+                new ConcurrentHashMap<>();
         private final AtomicBoolean open = new AtomicBoolean(true);
 
         DeviceSession(
@@ -366,7 +383,7 @@ final class UsbIpServer implements AutoCloseable {
                             return null;
                         });
                         active.put(sequence, task);
-                        transfers.execute(task);
+                        transferQueue(submit).execute(task);
                     } else if (command == USBIP_CMD_UNLINK) {
                         int unlinkSequence = header.getInt();
                         Future<?> future = active.remove(unlinkSequence);
@@ -407,17 +424,30 @@ final class UsbIpServer implements AutoCloseable {
                     if (endpoint == null) {
                         status = EIO;
                     } else {
-                        byte[] buffer = submit.direction == USBIP_DIR_IN
-                                ? new byte[submit.transferLength] : submit.outData;
+                        byte[] buffer;
                         int result;
-                        do {
+                        if (submit.direction == USBIP_DIR_IN) {
+                            buffer = takePendingInput(
+                                    endpoint.getAddress(), submit.transferLength);
+                            if (buffer.length > 0) {
+                                result = buffer.length;
+                            } else {
+                                buffer = new byte[submit.transferLength];
+                                do {
+                                    result = connection.bulkTransfer(
+                                            endpoint, buffer, buffer.length,
+                                            TRANSFER_TIMEOUT_MS);
+                                } while (result < 0
+                                        && open.get()
+                                        && !Thread.currentThread().isInterrupted());
+                            }
+                        } else {
+                            buffer = submit.outData;
                             result = connection.bulkTransfer(
                                     endpoint, buffer, buffer.length, TRANSFER_TIMEOUT_MS);
-                        } while (result < 0
-                                && open.get()
-                                && !Thread.currentThread().isInterrupted()
-                                && submit.direction == USBIP_DIR_IN);
+                        }
                         if (Thread.currentThread().isInterrupted()) {
+                            preserveCancelledInput(submit, endpoint, buffer, result);
                             return;
                         }
                         if (result < 0) {
@@ -430,8 +460,15 @@ final class UsbIpServer implements AutoCloseable {
                         }
                     }
                 }
-                if (active.remove(submit.sequence) == null
-                        || Thread.currentThread().isInterrupted()) {
+                if (active.remove(submit.sequence) == null) {
+                    if (submit.direction == USBIP_DIR_IN && actualLength > 0) {
+                        addPendingInput(
+                                submit.endpoint | 0x80,
+                                Arrays.copyOf(response, actualLength));
+                    }
+                    return;
+                }
+                if (Thread.currentThread().isInterrupted()) {
                     return;
                 }
                 writeSubmitReply(
@@ -452,6 +489,50 @@ final class UsbIpServer implements AutoCloseable {
             }
         }
 
+        private ExecutorService transferQueue(Submit submit) {
+            int key = submit.endpoint == 0
+                    ? 0
+                    : submit.endpoint
+                    | (submit.direction == USBIP_DIR_IN ? 0x80 : 0);
+            return transferQueues.computeIfAbsent(
+                    key, ignored -> Executors.newSingleThreadExecutor());
+        }
+
+        private void preserveCancelledInput(
+                Submit submit, UsbEndpoint endpoint, byte[] buffer, int result) {
+            if (submit.direction != USBIP_DIR_IN || result <= 0) {
+                return;
+            }
+            addPendingInput(endpoint.getAddress(), Arrays.copyOf(buffer, result));
+            Log.i(TAG, "USB/IP preserved " + result
+                    + " bytes from cancelled IN transfer endpoint=0x"
+                    + Integer.toHexString(endpoint.getAddress()));
+        }
+
+        private void addPendingInput(int endpointAddress, byte[] data) {
+            if (data.length > 0) {
+                pendingInput.computeIfAbsent(
+                        endpointAddress, ignored -> new ArrayDeque<>()).addLast(data);
+            }
+        }
+
+        private byte[] takePendingInput(int endpointAddress, int maximumLength) {
+            ArrayDeque<byte[]> queue = pendingInput.get(endpointAddress);
+            if (queue == null || queue.isEmpty() || maximumLength == 0) {
+                return new byte[0];
+            }
+            byte[] data = queue.removeFirst();
+            if (data.length <= maximumLength) {
+                if (queue.isEmpty()) {
+                    pendingInput.remove(endpointAddress, queue);
+                }
+                return data;
+            }
+            byte[] result = Arrays.copyOf(data, maximumLength);
+            queue.addFirst(Arrays.copyOfRange(data, maximumLength, data.length));
+            return result;
+        }
+
         private TransferResult executeControl(Submit submit) {
             ByteBuffer setup = ByteBuffer.wrap(submit.setup).order(ByteOrder.LITTLE_ENDIAN);
             int requestType = setup.get() & 0xff;
@@ -469,7 +550,6 @@ final class UsbIpServer implements AutoCloseable {
                 return new TransferResult(
                         setInterface(index, value) ? ST_OK : EIO, 0, new byte[0]);
             }
-
             boolean inputTransfer = (requestType & UsbConstants.USB_DIR_IN) != 0;
             byte[] data = inputTransfer
                     ? new byte[boundedLength]
@@ -477,6 +557,16 @@ final class UsbIpServer implements AutoCloseable {
             int result = connection.controlTransfer(
                     requestType, request, value, index, data, boundedLength,
                     TRANSFER_TIMEOUT_MS);
+            if (requestType == 0x41 && request == 0x07) {
+                Log.i(TAG, "USB/IP CP210x modem control pass-through value=0x"
+                        + Integer.toHexString(value) + " index=" + index
+                        + " result=" + result);
+            } else if (result < 0) {
+                Log.w(TAG, "USB/IP control transfer failed type=0x"
+                        + Integer.toHexString(requestType) + " request=0x"
+                        + Integer.toHexString(request) + " value=0x"
+                        + Integer.toHexString(value) + " index=" + index);
+            }
             if (result < 0) {
                 return new TransferResult(EIO, 0, new byte[0]);
             }
@@ -556,7 +646,11 @@ final class UsbIpServer implements AutoCloseable {
                 future.cancel(true);
             }
             active.clear();
-            transfers.shutdownNow();
+            for (ExecutorService queue : transferQueues.values()) {
+                queue.shutdownNow();
+            }
+            transferQueues.clear();
+            pendingInput.clear();
             for (int index = 0; index < device.getInterfaceCount(); index++) {
                 connection.releaseInterface(device.getInterface(index));
             }
