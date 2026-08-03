@@ -171,6 +171,20 @@ covers CDC/USB serial and common debug probes. Isochronous transfers are
 rejected. Flashing and debugging are latency-sensitive, so use conservative
 adapter speeds and longer OpenOCD timeouts over high-latency relay paths.
 
+For SEGGER J-Link devices (USB vendor ID `1366`), Android DevTools logs the
+device and endpoint descriptors, interface claims, USB/IP submit/completion
+timing, control requests, bulk-IN waits, unlink requests, and a final session
+summary. Transfer payloads are never logged, and per-transfer output is capped
+at 200 lines per session. Capture a focused trace from the Jupyter workspace:
+
+```sh
+adb -s 127.0.0.1:5555 logcat -c
+adb -s 127.0.0.1:5555 logcat -v threadtime -s AndroidDevTools:I
+```
+
+Start the J-Link command in another terminal, reproduce the failure, then stop
+`logcat` with Ctrl+C. Relevant lines begin with `USB/IP J-Link`.
+
 The protocol design was checked against
 [`cgutman/USBIPServerForAndroid`](https://github.com/cgutman/USBIPServerForAndroid)
 and [`jiegec/usbip`](https://github.com/jiegec/usbip). The Android server in

@@ -36,6 +36,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Userspace USB/IP server backed by Android's public USB Host APIs.
@@ -68,6 +69,8 @@ final class UsbIpServer implements AutoCloseable {
     private static final int ECONNRESET = -104;
     private static final int MAX_TRANSFER = 4 * 1024 * 1024;
     private static final int TRANSFER_TIMEOUT_MS = 1000;
+    private static final int SEGGER_VENDOR_ID = 0x1366;
+    private static final int JLINK_TRACE_LIMIT = 200;
 
     private final Context context;
     private final UsbManager usbManager;
@@ -304,6 +307,14 @@ final class UsbIpServer implements AutoCloseable {
         private final Map<Integer, ArrayDeque<byte[]>> pendingInput =
                 new ConcurrentHashMap<>();
         private final AtomicBoolean open = new AtomicBoolean(true);
+        private final boolean jLink;
+        private final String sessionBusId;
+        private final long sessionStartedNanos = System.nanoTime();
+        private final AtomicInteger traceLines = new AtomicInteger();
+        private final AtomicInteger submitCount = new AtomicInteger();
+        private final AtomicInteger completionCount = new AtomicInteger();
+        private final AtomicInteger failureCount = new AtomicInteger();
+        private final AtomicInteger unlinkCount = new AtomicInteger();
 
         DeviceSession(
                 LocalSocket socket,
@@ -316,28 +327,63 @@ final class UsbIpServer implements AutoCloseable {
             this.output = output;
             this.device = device;
             this.connection = connection;
+            this.jLink = isJLink(device);
+            this.sessionBusId = busId(device);
         }
 
         boolean prepare() {
+            if (jLink) {
+                byte[] descriptors = connection.getRawDescriptors();
+                traceJLink("prepare product=" + device.getProductName()
+                        + " deviceId=" + device.getDeviceId()
+                        + " class=0x" + Integer.toHexString(device.getDeviceClass())
+                        + " subclass=0x" + Integer.toHexString(device.getDeviceSubclass())
+                        + " protocol=0x" + Integer.toHexString(device.getDeviceProtocol())
+                        + " configurations=" + device.getConfigurationCount()
+                        + " interfaces=" + device.getInterfaceCount()
+                        + " rawDescriptors=" + (descriptors == null ? 0 : descriptors.length));
+            }
             UsbConfiguration configuration = device.getConfigurationCount() == 0
                     ? null : device.getConfiguration(0);
             if (configuration != null) {
-                connection.setConfiguration(configuration);
+                boolean configured = connection.setConfiguration(configuration);
+                traceJLink("set-configuration id=" + configuration.getId()
+                        + " result=" + configured);
             }
             boolean claimedAny = false;
             for (int index = 0; index < device.getInterfaceCount(); index++) {
                 UsbInterface usbInterface = device.getInterface(index);
-                if (connection.claimInterface(usbInterface, true)) {
+                boolean claimed = connection.claimInterface(usbInterface, true);
+                if (claimed) {
                     claimedAny = true;
                 }
+                traceJLink("claim-interface index=" + index
+                        + " id=" + usbInterface.getId()
+                        + " alternate=" + usbInterface.getAlternateSetting()
+                        + " class=0x" + Integer.toHexString(usbInterface.getInterfaceClass())
+                        + " subclass=0x"
+                        + Integer.toHexString(usbInterface.getInterfaceSubclass())
+                        + " protocol=0x"
+                        + Integer.toHexString(usbInterface.getInterfaceProtocol())
+                        + " endpoints=" + usbInterface.getEndpointCount()
+                        + " result=" + claimed);
                 for (int endpointIndex = 0;
                      endpointIndex < usbInterface.getEndpointCount();
                      endpointIndex++) {
                     UsbEndpoint endpoint = usbInterface.getEndpoint(endpointIndex);
                     endpoints.put(endpoint.getAddress(), endpoint);
+                    traceJLink("endpoint interface=" + usbInterface.getId()
+                            + " index=" + endpointIndex
+                            + " address=0x" + Integer.toHexString(endpoint.getAddress())
+                            + " direction=" + directionName(endpoint.getDirection())
+                            + " type=" + transferTypeName(endpoint.getType())
+                            + " maxPacket=" + endpoint.getMaxPacketSize()
+                            + " interval=" + endpoint.getInterval());
                 }
             }
-            return claimedAny || device.getInterfaceCount() == 0;
+            boolean prepared = claimedAny || device.getInterfaceCount() == 0;
+            traceJLink("prepare-complete result=" + prepared);
+            return prepared;
         }
 
         void run() throws IOException {
@@ -378,6 +424,16 @@ final class UsbIpServer implements AutoCloseable {
                                 sequence, deviceId, direction, endpoint,
                                 transferFlags, transferLength, startFrame,
                                 interval, setup, outData);
+                        submitCount.incrementAndGet();
+                        traceJLink("submit sequence=" + sequence
+                                + " direction=" + usbIpDirectionName(direction)
+                                + " endpoint=0x" + Integer.toHexString(endpoint)
+                                + " length=" + transferLength
+                                + " flags=0x" + Integer.toHexString(transferFlags)
+                                + " startFrame=" + startFrame
+                                + " packets=" + packetCount
+                                + " interval=" + interval
+                                + (endpoint == 0 ? " setup=" + hexBytes(setup) : ""));
                         FutureTask<Void> task = new FutureTask<>(() -> {
                             execute(submit);
                             return null;
@@ -390,6 +446,11 @@ final class UsbIpServer implements AutoCloseable {
                         if (future != null) {
                             future.cancel(true);
                         }
+                        unlinkCount.incrementAndGet();
+                        traceJLink("unlink sequence=" + sequence
+                                + " targetSequence=" + unlinkSequence
+                                + " endpoint=0x" + Integer.toHexString(endpoint)
+                                + " active=" + (future != null));
                         writeUnlinkReply(
                                 sequence, deviceId, direction, endpoint,
                                 future == null ? ECONNRESET : ST_OK);
@@ -409,6 +470,7 @@ final class UsbIpServer implements AutoCloseable {
         }
 
         private void execute(Submit submit) {
+            long startedNanos = System.nanoTime();
             int status = ST_OK;
             int actualLength = 0;
             byte[] response = new byte[0];
@@ -433,10 +495,20 @@ final class UsbIpServer implements AutoCloseable {
                                 result = buffer.length;
                             } else {
                                 buffer = new byte[submit.transferLength];
+                                int attempts = 0;
                                 do {
                                     result = connection.bulkTransfer(
                                             endpoint, buffer, buffer.length,
                                             TRANSFER_TIMEOUT_MS);
+                                    attempts++;
+                                    if (result < 0
+                                            && (attempts <= 3 || attempts % 10 == 0)) {
+                                        traceJLink("bulk-in-wait sequence="
+                                                + submit.sequence
+                                                + " endpoint=0x"
+                                                + Integer.toHexString(endpoint.getAddress())
+                                                + " attempt=" + attempts);
+                                    }
                                 } while (result < 0
                                         && open.get()
                                         && !Thread.currentThread().isInterrupted());
@@ -460,6 +532,14 @@ final class UsbIpServer implements AutoCloseable {
                         }
                     }
                 }
+                completionCount.incrementAndGet();
+                if (status != ST_OK) {
+                    failureCount.incrementAndGet();
+                }
+                traceJLink("complete sequence=" + submit.sequence
+                        + " status=" + status
+                        + " actualLength=" + actualLength
+                        + " elapsedMs=" + elapsedMillis(startedNanos));
                 if (active.remove(submit.sequence) == null) {
                     if (submit.direction == USBIP_DIR_IN && actualLength > 0) {
                         addPendingInput(
@@ -476,6 +556,10 @@ final class UsbIpServer implements AutoCloseable {
                         submit.endpoint, status, actualLength, response);
             } catch (Throwable throwable) {
                 active.remove(submit.sequence);
+                failureCount.incrementAndGet();
+                traceJLink("exception sequence=" + submit.sequence
+                        + " type=" + throwable.getClass().getSimpleName()
+                        + " message=" + throwable.getMessage());
                 if (open.get() && !Thread.currentThread().isInterrupted()) {
                     Log.w(TAG, "USB/IP transfer failed", throwable);
                     try {
@@ -557,6 +641,13 @@ final class UsbIpServer implements AutoCloseable {
             int result = connection.controlTransfer(
                     requestType, request, value, index, data, boundedLength,
                     TRANSFER_TIMEOUT_MS);
+            traceJLink("control-result sequence=" + submit.sequence
+                    + " type=0x" + Integer.toHexString(requestType)
+                    + " request=0x" + Integer.toHexString(request)
+                    + " value=0x" + Integer.toHexString(value)
+                    + " index=0x" + Integer.toHexString(index)
+                    + " requested=" + boundedLength
+                    + " result=" + result);
             if (requestType == 0x41 && request == 0x07) {
                 Log.i(TAG, "USB/IP CP210x modem control pass-through value=0x"
                         + Integer.toHexString(value) + " index=" + index
@@ -642,6 +733,15 @@ final class UsbIpServer implements AutoCloseable {
             if (!open.compareAndSet(true, false)) {
                 return;
             }
+            if (jLink) {
+                Log.i(TAG, "USB/IP J-Link " + sessionBusId
+                        + " session-close durationMs=" + elapsedMillis(sessionStartedNanos)
+                        + " submits=" + submitCount.get()
+                        + " completions=" + completionCount.get()
+                        + " unlinks=" + unlinkCount.get()
+                        + " failures=" + failureCount.get()
+                        + " active=" + active.size());
+            }
             for (Future<?> future : active.values()) {
                 future.cancel(true);
             }
@@ -658,6 +758,19 @@ final class UsbIpServer implements AutoCloseable {
             try {
                 socket.close();
             } catch (IOException ignored) {
+            }
+        }
+
+        private void traceJLink(String message) {
+            if (!jLink) {
+                return;
+            }
+            int line = traceLines.incrementAndGet();
+            if (line <= JLINK_TRACE_LIMIT) {
+                Log.i(TAG, "USB/IP J-Link " + sessionBusId + " " + message);
+            } else if (line == JLINK_TRACE_LIMIT + 1) {
+                Log.i(TAG, "USB/IP J-Link " + sessionBusId
+                        + " trace limit reached; suppressing further per-transfer logs");
             }
         }
     }
@@ -734,6 +847,45 @@ final class UsbIpServer implements AutoCloseable {
                 + " [" + String.format("%04x:%04x",
                 device.getVendorId(), device.getProductId()) + "]"
                 + " busid=" + busId(device);
+    }
+
+    private static boolean isJLink(UsbDevice device) {
+        return device != null && device.getVendorId() == SEGGER_VENDOR_ID;
+    }
+
+    private static String directionName(int direction) {
+        return direction == UsbConstants.USB_DIR_IN ? "in" : "out";
+    }
+
+    private static String usbIpDirectionName(int direction) {
+        return direction == USBIP_DIR_IN ? "in" : "out";
+    }
+
+    private static String transferTypeName(int type) {
+        switch (type) {
+            case UsbConstants.USB_ENDPOINT_XFER_CONTROL:
+                return "control";
+            case UsbConstants.USB_ENDPOINT_XFER_ISOC:
+                return "isochronous";
+            case UsbConstants.USB_ENDPOINT_XFER_BULK:
+                return "bulk";
+            case UsbConstants.USB_ENDPOINT_XFER_INT:
+                return "interrupt";
+            default:
+                return "unknown(" + type + ")";
+        }
+    }
+
+    private static String hexBytes(byte[] value) {
+        StringBuilder result = new StringBuilder(value.length * 2);
+        for (byte item : value) {
+            result.append(String.format("%02x", item & 0xff));
+        }
+        return result.toString();
+    }
+
+    private static long elapsedMillis(long startedNanos) {
+        return (System.nanoTime() - startedNanos) / 1_000_000L;
     }
 
     private static int detectSpeed(UsbDevice device) {
