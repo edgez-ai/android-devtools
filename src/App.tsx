@@ -143,17 +143,24 @@ export default function App() {
   const requestRequiredPermissions = useCallback(async () => {
     setBusy(true);
     try {
-      if (Platform.OS === 'android' && Platform.Version >= 33) {
-        const result = await PermissionsAndroid.requestMultiple([
-          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-          PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES,
-        ]);
+      if (Platform.OS === 'android' && Platform.Version >= 31) {
+        const permissions = [
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+          ...(Platform.Version >= 33
+            ? [
+                PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+                PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES,
+              ]
+            : []),
+        ];
+        const result = await PermissionsAndroid.requestMultiple(permissions);
         const granted = Object.values(result).every(
           value => value === PermissionsAndroid.RESULTS.GRANTED,
         );
         if (!granted) {
           setStatusMessage(
-            'Nearby Wi-Fi and notification permissions are needed for discovery and reliable background status.',
+            'Nearby devices, Bluetooth, and notification permissions are needed for discovery and provisioning.',
           );
           await refreshStatus();
           return;

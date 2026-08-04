@@ -602,18 +602,28 @@ public final class MainActivity extends Activity {
     }
 
     private void requestRuntimePermissions() {
-        if (Build.VERSION.SDK_INT < 33) {
+        if (Build.VERSION.SDK_INT < 31) {
             refreshPermissionStatus();
             return;
         }
         List<String> missing = new ArrayList<>();
-        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+        if (checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN)
                 != PackageManager.PERMISSION_GRANTED) {
-            missing.add(Manifest.permission.POST_NOTIFICATIONS);
+            missing.add(Manifest.permission.BLUETOOTH_SCAN);
         }
-        if (checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
+        if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
                 != PackageManager.PERMISSION_GRANTED) {
-            missing.add(Manifest.permission.NEARBY_WIFI_DEVICES);
+            missing.add(Manifest.permission.BLUETOOTH_CONNECT);
+        }
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                missing.add(Manifest.permission.POST_NOTIFICATIONS);
+            }
+            if (checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
+                    != PackageManager.PERMISSION_GRANTED) {
+                missing.add(Manifest.permission.NEARBY_WIFI_DEVICES);
+            }
         }
         if (!missing.isEmpty()) {
             requestPermissions(missing.toArray(new String[0]), PERMISSION_REQUEST);
@@ -623,11 +633,17 @@ public final class MainActivity extends Activity {
     }
 
     private boolean hasRuntimePermissions() {
-        return Build.VERSION.SDK_INT < 33
+        boolean bluetoothGranted = Build.VERSION.SDK_INT < 31
+                || (checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN)
+                        == PackageManager.PERMISSION_GRANTED
+                    && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                        == PackageManager.PERMISSION_GRANTED);
+        boolean android13Granted = Build.VERSION.SDK_INT < 33
                 || (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                         == PackageManager.PERMISSION_GRANTED
                     && checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
                         == PackageManager.PERMISSION_GRANTED);
+        return bluetoothGranted && android13Granted;
     }
 
     private void requestUnrestrictedBattery() {
