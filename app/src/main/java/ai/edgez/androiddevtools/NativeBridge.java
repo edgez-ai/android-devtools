@@ -40,6 +40,8 @@ public final class NativeBridge {
 
     static native String nativeStopClient();
 
+    static native void nativeNotifyUsbEvent(String event);
+
     static native String nativeStartScrcpy();
 
     static native String nativeProvideScrcpyJar(byte[] bytes);

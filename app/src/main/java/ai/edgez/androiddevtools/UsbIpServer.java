@@ -69,7 +69,14 @@ final class UsbIpServer implements AutoCloseable {
     private static final int EIO = -5;
     private static final int ECONNRESET = -104;
     private static final int MAX_TRANSFER = 4 * 1024 * 1024;
-    private static final int TRANSFER_TIMEOUT_MS = 1000;
+    private static final int CONTROL_TRANSFER_TIMEOUT_MS = 1000;
+    private static final int BULK_OUT_TIMEOUT_MS = 1000;
+    // Android's synchronous bulkTransfer cannot be interrupted while it is
+    // blocked. USB/IP UNLINK only interrupts the worker thread, so a long
+    // timeout leaves a cancelled serial read at the head of the endpoint FIFO
+    // and delays esptool's next ROM-sync read. Poll IN endpoints quickly so a
+    // cancellation is observed inside the bootloader reset/sync window.
+    private static final int BULK_IN_POLL_TIMEOUT_MS = 50;
     private static final int SEGGER_VENDOR_ID = 0x1366;
     private static final int JLINK_TRACE_LIMIT = 200;
 
@@ -93,11 +100,14 @@ final class UsbIpServer implements AutoCloseable {
                         UsbManager.EXTRA_PERMISSION_GRANTED, false);
                 Log.i(TAG, "USB/IP permission device=" + deviceLabel(device)
                         + " granted=" + granted);
+                notifyUsbEvent(granted ? "available" : "permission_denied", device);
             } else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
                 Log.i(TAG, "USB/IP device attached: " + deviceLabel(device));
+                notifyUsbEvent("attached", device);
                 requestPermission(device);
             } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
                 Log.i(TAG, "USB/IP device detached: " + deviceLabel(device));
+                notifyUsbEvent("detached", device);
                 closeSessions(device);
             }
         }
@@ -183,6 +193,24 @@ final class UsbIpServer implements AutoCloseable {
                 }
             }
         }
+    }
+
+    void publishUsbSnapshot() {
+        notifyUsbEvent("snapshot_begin", null);
+        for (UsbDevice device : usbManager.getDeviceList().values()) {
+            if (usbManager.hasPermission(device)) {
+                notifyUsbEvent("present", device);
+            }
+        }
+        notifyUsbEvent("snapshot_end", null);
+    }
+
+    private static void notifyUsbEvent(String action, UsbDevice device) {
+        String bus = device == null ? "-" : busId(device);
+        int vendorId = device == null ? 0 : device.getVendorId();
+        int productId = device == null ? 0 : device.getProductId();
+        NativeBridge.nativeNotifyUsbEvent("1 " + action + " " + bus + " "
+                + String.format("%04x %04x", vendorId, productId));
     }
 
     private void handleClient(LocalSocket socket) {
@@ -534,7 +562,7 @@ final class UsbIpServer implements AutoCloseable {
                                 do {
                                     result = connection.bulkTransfer(
                                             endpoint, buffer, buffer.length,
-                                            TRANSFER_TIMEOUT_MS);
+                                            BULK_IN_POLL_TIMEOUT_MS);
                                     attempts++;
                                     if (result < 0
                                             && (attempts <= 3 || attempts % 10 == 0)) {
@@ -551,7 +579,7 @@ final class UsbIpServer implements AutoCloseable {
                         } else {
                             buffer = submit.outData;
                             result = connection.bulkTransfer(
-                                    endpoint, buffer, buffer.length, TRANSFER_TIMEOUT_MS);
+                                    endpoint, buffer, buffer.length, BULK_OUT_TIMEOUT_MS);
                         }
                         if (Thread.currentThread().isInterrupted()) {
                             preserveCancelledInput(submit, endpoint, buffer, result);
@@ -675,7 +703,7 @@ final class UsbIpServer implements AutoCloseable {
                     : Arrays.copyOf(submit.outData, boundedLength);
             int result = connection.controlTransfer(
                     requestType, request, value, index, data, boundedLength,
-                    TRANSFER_TIMEOUT_MS);
+                    CONTROL_TRANSFER_TIMEOUT_MS);
             traceJLink("control-result sequence=" + submit.sequence
                     + " type=0x" + Integer.toHexString(requestType)
                     + " request=0x" + Integer.toHexString(request)

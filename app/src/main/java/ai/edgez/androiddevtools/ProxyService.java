@@ -124,6 +124,7 @@ public final class ProxyService extends Service {
             if (!result.optBoolean("ok")) {
                 throw new IllegalStateException(result.optString("error", response));
             }
+            usbIpServer.publishUsbSnapshot();
             if (stopping || Thread.currentThread().isInterrupted()) {
                 stopNativeClient();
                 return;

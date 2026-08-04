@@ -7,6 +7,7 @@
 typedef char *(*create_identity_fn)(const char *);
 typedef char *(*start_client_fn)(const char *);
 typedef char *(*stop_client_fn)(void);
+typedef void (*notify_usb_event_fn)(const char *);
 typedef char *(*start_scrcpy_fn)(void);
 typedef char *(*provide_scrcpy_jar_fn)(const char *, int);
 typedef char *(*pair_wireless_fn)(const char *, int, const char *, const char *, const char *, int);
@@ -193,6 +194,29 @@ Java_ai_edgez_androiddevtools_NativeBridge_nativeStopClient(
     jstring output = copy_result(env, stop_client(), free_result);
     dlclose(handle);
     return output;
+}
+
+JNIEXPORT void JNICALL
+Java_ai_edgez_androiddevtools_NativeBridge_nativeNotifyUsbEvent(
+        JNIEnv *env, jclass clazz, jstring event) {
+    (void) clazz;
+    if (event == NULL) {
+        return;
+    }
+    void *handle = open_library();
+    if (handle == NULL) {
+        return;
+    }
+    notify_usb_event_fn notify_usb_event =
+            (notify_usb_event_fn) dlsym(handle, "EdgeNotifyUSBEvent");
+    if (notify_usb_event != NULL) {
+        const char *value = (*env)->GetStringUTFChars(env, event, NULL);
+        if (value != NULL) {
+            notify_usb_event(value);
+            (*env)->ReleaseStringUTFChars(env, event, value);
+        }
+    }
+    dlclose(handle);
 }
 
 JNIEXPORT jstring JNICALL

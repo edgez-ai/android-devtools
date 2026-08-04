@@ -143,10 +143,15 @@ export default function App() {
   const requestRequiredPermissions = useCallback(async () => {
     setBusy(true);
     try {
-      if (Platform.OS === 'android' && Platform.Version >= 31) {
+      if (Platform.OS === 'android' && Platform.Version >= 23) {
         const permissions = [
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          ...(Platform.Version >= 31
+            ? [
+                PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+                PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+              ]
+            : []),
           ...(Platform.Version >= 33
             ? [
                 PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
