@@ -1,4 +1,4 @@
-name: Build Android release
+name: Build Android development client
 
 on:
   workflow_dispatch:
@@ -10,14 +10,14 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-release-${{ github.ref }}
+  group: android-development-client-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Build signed and unsigned APKs
+    name: Build merged ARM64 debug APK
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Check out repository
@@ -25,17 +25,14 @@ jobs:
         with:
           submodules: false
 
-      - name: Verify prebuilt native libraries
-        shell: bash
-        run: |
-          set -euo pipefail
-          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
-            library="app/src/main/jniLibs/$abi/libedgejoin.so"
-            if [[ ! -s "$library" ]]; then
-              echo "Missing prebuilt native library: $library" >&2
-              exit 1
-            fi
-          done
+      - name: Verify the prebuilt EdgeZ native library
+        run: test -s app/src/main/jniLibs/arm64-v8a/libedgejoin.so
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -48,80 +45,36 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install Android build dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          sdkmanager \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "ndk;27.0.12077973" \
-            "cmake;3.22.1"
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
 
-      - name: Build unsigned release APK
-        run: ./gradlew assembleRelease --no-daemon
+      - name: Install JavaScript dependencies
+        run: npm ci
 
-      - name: Save unsigned release APK
-        shell: bash
+      - name: Generate the Android project
+        run: npx expo prebuild --clean --platform android --no-install
+
+      - name: Build the merged development client
+        working-directory: android
+        run: ./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a --no-daemon
+
+      - name: Collect the APK
         run: |
-          set -euo pipefail
           mkdir -p release-artifacts
-          cp app/build/outputs/apk/release/app-release-unsigned.apk \
-            release-artifacts/android-devtools-release-unsigned.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+            release-artifacts/edgez-devtools-expo-57-ble-debug.apk
 
-      - name: Configure Android release signing
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          : "${ANDROID_KEYSTORE_BASE64:?Missing ANDROID_KEYSTORE_BASE64 secret}"
-          : "${ANDROID_KEYSTORE_PASSWORD:?Missing ANDROID_KEYSTORE_PASSWORD secret}"
-
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/upload-keystore.jks
-          printf '%s\n' \
-            "storePassword=$ANDROID_KEYSTORE_PASSWORD" \
-            "keyPassword=$ANDROID_KEYSTORE_PASSWORD" \
-            "keyAlias=edgez-android-release" \
-            "storeFile=upload-keystore.jks" \
-            > key.properties
-
-      - name: Build signed release APK
-        run: ./gradlew clean assembleRelease --no-daemon
-
-      - name: Save signed release APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp app/build/outputs/apk/release/app-release.apk \
-            release-artifacts/android-devtools-release-signed.apk
-
-      - name: Verify APK signatures
-        shell: bash
-        run: |
-          set -euo pipefail
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose \
-            release-artifacts/android-devtools-release-signed.apk
-          if "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify \
-            release-artifacts/android-devtools-release-unsigned.apk; then
-            echo "Unsigned APK unexpectedly contains a valid signature." >&2
-            exit 1
-          fi
-
-      - name: Upload Android release artifacts
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-release-${{ github.run_number }}
-          path: release-artifacts/
+          name: edgez-devtools-development-client-${{ github.run_number }}
+          path: release-artifacts/edgez-devtools-expo-57-ble-debug.apk
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload Android APKs to GitHub Release
+      - name: Upload tagged APK to GitHub Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release-artifacts/android-devtools-release-unsigned.apk
-            release-artifacts/android-devtools-release-signed.apk
+          files: release-artifacts/edgez-devtools-expo-57-ble-debug.apk
           fail_on_unmatched_files: true
           generate_release_notes: true

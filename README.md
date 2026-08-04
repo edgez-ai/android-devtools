@@ -1,321 +1,124 @@
-# Android DevTools
+# EdgeZ Android DevTools
 
-Android companion for using a physical device from a remote Flutter, React
-Native, or JupyterHub workspace through [`adb-sidecar`](../adb-sidecar).
+EdgeZ Android DevTools is an Expo SDK 57 React Native development client for
+connecting a physical Android device to a remote workspace through
+[`adb-sidecar`](../adb-sidecar). It combines one installable application with:
 
-The app runs the same native libp2p ADB proxy used by the AutoJs6 `libp2p`
-branch, without the AutoJs runtime. It:
+- the React Native version of the original Android setup UI;
+- the Expo development-client runtime for loading projects from Metro;
+- `react-native-ble-plx` for Bluetooth Low Energy central/client access;
+- the existing EdgeZ libp2p, Wireless Debugging, USB/IP, and scrcpy Android
+  implementation.
 
-- joins the EdgeZ libp2p network and persists the device identity;
-- discovers Android Wireless Debugging pairing/connect ports with mDNS;
-- pairs the native ADB client with the device;
-- exposes the device's local `adbd` through
-  `/gvisor/libp2p-tap-tcp/1.0.0`;
-- exports permitted USB host/OTG devices as USB/IP frames directly over a
-  libp2p stream selected by target port `3240` (there is no Android TCP
-  listener);
-- supplies AutoJs6's scrcpy server asset to the native client and lazily
-  bootstraps it when libp2p target port `8886` is requested;
-- keeps the proxy alive in a foreground service and restarts it after boot.
+This is a custom development client, not the store version of Expo Go. Native
+modules such as BLE require this APK and cannot be added by installing only the
+standard Expo runtime.
 
-Like AutoJs6, the app starts the libp2p foreground client automatically whenever
-stored join configuration exists. Libp2p startup does not wait for Wireless
-Debugging discovery; the local ADB target is discovered and refreshed
-independently.
-
-## Build
-
-The native `libedgejoin.so` files are copied from AutoJs6 commit
-`042d4bc0bee8ade160ac9d659b48e2dfe15b09ae`. The corresponding source is
-`jasonhao518/autojs6-libp2p` commit
-`c6269288d5a36a2538115082b52469cec26210c5`.
-
-The bundled `app/src/main/assets/scrcpy/scrcpy-server.jar` is copied byte for
-byte from the same AutoJs6 `origin/libp2p` revision. Its SHA-256 is
-`a2223a3a4249822187906e0fa8b147eb5a9ed94e47a9e8e8b3f07da651149806`.
-
-```sh
-git submodule update --init --recursive
-./gradlew assembleDebug
-```
-
-The APK is written to:
+## Project layout
 
 ```text
-app/build/outputs/apk/debug/app-debug.apk
+src/                         React Native UI and TypeScript native bridge
+app/src/main/                Existing EdgeZ Android sources and resources
+native/edgez-android/        Android library that compiles those sources
+plugins/withEdgezNative.js   Expo prebuild integration
+android/                     Generated Android Studio/Gradle project
 ```
 
-### Custom Expo Go 57 with BLE
+`native/edgez-android` references `app/src/main` directly. The APK therefore
+contains the current native sources; it does not embed or copy a second APK.
 
-To build Android DevTools as an Expo Go SDK 57 runtime with
-`react-native-ble-plx` 3.5.1 compiled in:
+## Install dependencies
+
+Use Node.js 22 and JDK 17:
 
 ```sh
-./gradlew assembleExpoGo57
+npm ci
 ```
 
-The task checks out the pinned Expo SDK 57 source, prepares the React Native
-0.86.2 workspace, and writes:
+The postinstall script applies the CMake version needed by the current Android
+SDK installation.
+
+## Build the merged debug APK
+
+Generate the native project after changing `app.json`, the config plugin, or
+native dependency configuration:
+
+```sh
+npx expo prebuild --clean --platform android --no-install
+node scripts/patch-react-native-cmake.mjs
+```
+
+Then build with the standard Android `assembleDebug` task:
+
+```sh
+cd android
+./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a
+```
+
+The single merged APK is written to:
 
 ```text
-app/build/outputs/apk/expoGo57/android-devtools-expo-go-57-ble-debug.apk
+android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The first build is large because it downloads and compiles Expo Go, React
-Native, Hermes, and the Android native dependencies. Use Node 22, pnpm,
-Corepack, Git LFS, JDK 17, and an Android SDK installation. The generated APK
-targets 64-bit ARM Android devices and uses Expo Go's `host.exp.exponent`
-application ID so Expo CLI and `exp://` links work normally. A locally signed
-APK cannot update the store-signed Expo Go; uninstall the official Expo Go
-before installing this custom runtime.
+Open the `android` directory—not the repository root—as the project in Android
+Studio. Select the `app` run configuration to build and install the same debug
+application.
 
-### Rebuild the native libp2p client
+## Run a Metro project
 
-The source is pinned as the `third_party/libp2p-go` Git submodule. To rebuild
-all four `libedgejoin.so` files with the Android NDK selected by Gradle:
+Start Metro for this development client:
 
 ```sh
-./gradlew buildNative
-./gradlew assembleDebug
+npm start
 ```
 
-To move to a newer native revision:
+Install and launch the debug APK, then select the local development server in
+the development-client launcher. For an attached device, Expo CLI normally
+configures the required ADB port forwarding. The React Native screen also has
+an **Open developer menu** button.
+
+The application ID is `ai.edgez.androiddevtools.runtime`. No separate Expo Go
+installation is required.
+
+## BLE
+
+`react-native-ble-plx` is autolinked into the development client. Metro-loaded
+React Native code can import it directly:
+
+```ts
+import { BleManager } from 'react-native-ble-plx';
+
+const manager = new BleManager();
+```
+
+Android still requires runtime Bluetooth permissions before scanning. The
+development client declares Bluetooth scan/connect and legacy location
+permissions in `app.json`. Rebuild the native APK whenever native modules or
+their config-plugin options change; JavaScript-only changes need only Metro.
+
+## EdgeZ device setup
+
+1. Grant notification and Nearby Wi-Fi permissions and allow unrestricted
+   battery use.
+2. Tap **Scan QR code & join** and scan the join QR code from edgez.ai.
+3. Tap **Pair from notification**, open **Pair device with pairing code** in
+   Wireless Debugging, and reply to the EdgeZ notification with the code.
+4. Copy the peer ID shown by the app into
+   `LIBP2P_AGENT_MOBILE_PEER_ID` for `adb-sidecar`.
+
+The foreground service restores the EdgeZ tunnel after boot when join
+configuration exists. Wireless Debugging itself may need to be enabled again
+after a device reboot.
+
+## Rebuild the native libp2p libraries
+
+The normal Android build uses the checked-in `libedgejoin.so` files. To rebuild
+them from `third_party/libp2p-go`:
 
 ```sh
-git -C third_party/libp2p-go fetch
-git -C third_party/libp2p-go checkout <tested-commit>
-./gradlew buildNative assembleDebug
+ANDROID_NDK_HOME=/path/to/android-ndk ./scripts/build-native.sh
 ```
 
-Commit both the updated submodule pointer and generated libraries. Keeping the
-generated libraries in this repository lets normal Android builds work without
-requiring Go, while `buildNative` makes their provenance reproducible.
-
-### GitHub release builds
-
-The **Build Android release** workflow runs manually or for tags matching
-`v*`. It builds and uploads:
-
-- `android-devtools-release-unsigned.apk`
-- `android-devtools-release-signed.apk`
-
-Configure these repository secrets before running it:
-
-- `ANDROID_KEYSTORE_BASE64`: the release JKS encoded as a single base64 string
-- `ANDROID_KEYSTORE_PASSWORD`: the store and key password
-
-The keystore must contain the `edgez-android-release` alias, matching the
-Flutter SDK release workflow. Tag builds also attach both APKs to the GitHub
-Release.
-
-To create a new Android signing identity, a strong random password, and a
-P-256 SDK signing private scalar, then print the three GitHub Actions
-`NAME=value` entries:
-
-```sh
-./scripts/generate-release-secrets.sh
-```
-
-This creates the following local, Git-ignored files with owner-only
-permissions:
-
-```text
-.local-secrets/android-release-keystore.jks
-.local-secrets/github-actions-secrets.env
-.local-secrets/keystore-info.txt
-```
-
-The environment file contains `ANDROID_KEYSTORE_BASE64`,
-`ANDROID_KEYSTORE_PASSWORD`, and `EDGEZ_SDK_SIGNING_PRIVATE_KEY_HEX`. Running
-the script again prints the existing values instead of silently replacing the
-signing identity. With the GitHub CLI authenticated, install them into a
-repository with:
-
-```sh
-gh secret set -f .local-secrets/github-actions-secrets.env
-```
-
-Alternatively, open **Settings → Secrets and variables → Actions** in the
-GitHub repository, choose **New repository secret**, and copy each value from
-`.local-secrets/github-actions-secrets.env`. Android DevTools uses the two
-`ANDROID_*` secrets; `EDGEZ_SDK_SIGNING_PRIVATE_KEY_HEX` is used by the Flutter
-SDK credential workflow.
-
-Back up `.local-secrets` in a secure password manager or encrypted vault.
-GitHub does not allow secret values to be downloaded later. Never regenerate
-or replace the Android signing key after distributing an APK signed with it;
-future upgrades must use the same keystore.
-
-## Device setup
-
-1. Install and open Android DevTools.
-2. Grant notification and Nearby Wi-Fi permissions, then allow unrestricted
-   battery use when Android prompts. These keep discovery and the foreground
-   relay connection reliable.
-3. On the device detail page in edgez.ai, generate a join key. In Android
-   DevTools tap **Scan QR code & join**, then scan the displayed pairing QR
-   code. The app validates its `serial_number` and `join_key` fields and joins
-   the network automatically. The scanner is provided by Google Play services
-   and does not require camera permission in Android DevTools.
-4. Tap **Pair from notification**, then choose **Pair device with pairing
-   code** in Wireless Debugging settings.
-5. Expand the Android DevTools notification and enter the six-digit code using
-   its inline reply action. Pairing codes are never entered in the activity.
-6. Copy the peer ID shown by the app into the JupyterHub deployment as
-   `LIBP2P_AGENT_MOBILE_PEER_ID`.
-
-The app restarts the tunnel after boot, but Android's Wireless Debugging switch
-may need to be enabled again after a reboot. Open the app and tap
-**Refresh ADB & start** after enabling it.
-
-### USB host / OTG setup
-
-1. Connect the ESP32, nRF54 development board, CMSIS-DAP probe, J-Link, or
-   other target through a powered OTG adapter or hub.
-2. Accept Android's USB access prompt for Android DevTools. Only devices with
-   granted permission are included in the USB/IP device list.
-3. Configure `adb-sidecar` with `USBIP_REMOTE_BUSIDS=all`, or use the bus ID
-   reported in logcat (for example `1-2`) when only one device should attach.
-4. Run the programmer/debugger in Jupyter exactly as for a locally connected
-   USB device.
-
-Android's USB Host API feeds USB/IP frames to the native client over an
-abstract Unix socket; the native client carries those frames on the raw
-libp2p stream. Only `adb-sidecar` provides a loopback TCP endpoint, because
-the Linux `usbip` client expects TCP.
-
-For hot-plug use, prefer `USBIP_REMOTE_BUSIDS=all`. Android DevTools closes the
-active USB/IP session as soon as it receives a detach broadcast, and requests
-permission again when a device is reconnected. Android may assign a different
-bus/device address after every connection, so a fixed bus ID is intended only
-for stable, always-connected hardware.
-
-The server implements USB/IP control, bulk, and interrupt transfers, which
-covers CDC/USB serial and common debug probes. Isochronous transfers are
-rejected. Flashing and debugging are latency-sensitive, so use conservative
-adapter speeds and longer OpenOCD timeouts over high-latency relay paths.
-
-For SEGGER J-Link devices (USB vendor ID `1366`), Android DevTools logs the
-device and endpoint descriptors, interface claims, USB/IP submit/completion
-timing, control requests, bulk-IN waits, unlink requests, and a final session
-summary. Transfer payloads are never logged, and per-transfer output is capped
-at 200 lines per session. Capture a focused trace from the Jupyter workspace:
-
-```sh
-adb -s 127.0.0.1:5555 logcat -c
-adb -s 127.0.0.1:5555 logcat -v threadtime -s AndroidDevTools:I
-```
-
-Start the J-Link command in another terminal, reproduce the failure, then stop
-`logcat` with Ctrl+C. Relevant lines begin with `USB/IP J-Link`.
-
-The protocol design was checked against
-[`cgutman/USBIPServerForAndroid`](https://github.com/cgutman/USBIPServerForAndroid)
-and [`jiegec/usbip`](https://github.com/jiegec/usbip). The Android server in
-this repository is an independent implementation using Android's public USB
-Host API.
-
-## JupyterHub / adb-sidecar
-
-Run `adb-sidecar` in the same Kubernetes Pod as the Flutter/Jupyter container:
-
-```yaml
-- name: adb-sidecar
-  image: jasonhao123/adb-sidecar:v0.1.0
-  env:
-    - name: EDGEZ_LIBP2P_CONFIG_JSON
-      valueFrom:
-        secretKeyRef:
-          name: edgez-libp2p
-          key: config.json
-    - name: LIBP2P_AGENT_MOBILE_PEER_ID
-      value: "12D3KooW..."
-    - name: LIBP2P_AGENT_MOBILE_ADB_PORT
-      value: "5555"
-    - name: LIBP2P_TUNNEL_LOCAL_PORT
-      value: "5555"
-    - name: USBIP_REMOTE_BUSIDS
-      value: "all"
-```
-
-In the Jupyter/Flutter container:
-
-```sh
-adb connect 127.0.0.1:5555
-adb devices
-flutter run -d 127.0.0.1:5555
-```
-
-Once `flutter run` is attached, use `r` for hot reload and `R` for hot
-restart. The VM service and all forwarded ports travel inside the same ADB
-connection, so no extra libp2p ports are required.
-
-### React Native / Expo Go
-
-The custom APK above combines Android DevTools, Expo Go SDK 57, and the native
-`react-native-ble-plx` module in one application. Android DevTools owns the
-launcher screen; tapping **Open Expo project** opens
-`exp://127.0.0.1:8081` directly in the embedded Expo runtime.
-
-EdgeZ Devtools listens on device `127.0.0.1:8081` and opens a reverse stream
-over the existing tap-tcp libp2p protocol for every Metro HTTP or WebSocket
-connection. The sidecar forwards each stream to Metro on the remote IDE Pod's
-`127.0.0.1:8081`. This does not depend on Android wireless debugging or `adb
-reverse`, and Metro is not exposed publicly.
-
-From an Expo project in the remote IDE:
-
-```sh
-adb connect 127.0.0.1:5555
-npx expo start --host localhost --port 8081
-```
-
-Install the matching JavaScript package in the Expo project:
-
-```sh
-npx expo install react-native-ble-plx@3.5.1
-```
-
-Then tap **Open Expo project**, or launch the loopback URL explicitly:
-
-```sh
-adb -s 127.0.0.1:5555 shell am start \
-  -a android.intent.action.VIEW \
-  -d exp://127.0.0.1:8081
-```
-
-The host manifest includes BLE scan/connect permissions. The Metro app must
-still request `BLUETOOTH_SCAN` and `BLUETOOTH_CONNECT` at runtime on Android 12
-and newer, or `ACCESS_FINE_LOCATION` on Android 11 and older, before scanning.
-This runtime supports BLE central/client operations provided by
-`react-native-ble-plx`; Bluetooth Classic and BLE peripheral mode are outside
-that library's scope. Because the native module is fixed in the APK, keep the
-Metro package on version 3.5.1 or rebuild the runtime when upgrading it.
-
-For a non-Expo React Native app or an Expo development build, use the same ADB
-device with `npx react-native run-android` or `npx expo run:android` and point
-the development server URL at `127.0.0.1:8081`.
-
-For USB, the sidecar—not Jupyter—runs `usbip attach` against the local
-`127.0.0.1:3240` libp2p bridge. The Kubernetes node must provide `vhci-hcd`,
-and the Jupyter hardware profile must mount the node's `/dev/bus/usb` with a
-device-cgroup policy that permits USB access. See the `adb-sidecar` README for
-the complete hardware-profile example and isolation caveat.
-
-For the custom scrcpy consumer used with AutoJs6, open a libp2p tunnel whose
-remote target is `8886`. The first connection makes the Android native client
-push `/data/local/tmp/scrcpy-server.jar`, launch
-`com.genymobile.scrcpy.Server`, and proxy its local port `8886`.
-
-## Security notes
-
-- Join configuration and identity keys are kept in app-private preferences.
-- The Wireless Debugging RSA key and TLS certificate are stored under the
-  app-private `files/adb/adbkey` path; no shared-storage permission is needed.
-- Preferences use the same `edgejoin` file and keys as the AutoJs6 client:
-  `config`, `peer_id`, `private_key`, `public_key`, `join_response`,
-  `join_key`, `serial_number`, `adb_proxy_host`, and `adb_proxy_port`.
-- The sidecar binds the proxied ADB endpoint to Pod loopback by default.
-- Anyone with the device peer ID and a valid identity on the same relay fabric
-  may attempt to open the tap protocol. Relay/network admission must therefore
-  be treated as the authorization boundary.
+Commit both an updated submodule pointer and the regenerated libraries when
+upgrading the native implementation.
