@@ -97,6 +97,11 @@ service is non-sticky and stops when the proxy is stopped or startup fails.
 When Wireless Debugging is off, the native Home prompts the user to enable it
 without starting the proxy.
 
+Each proxy run uses a unique internal `@edgez-usbip-<pid>-<run>` Unix-socket
+bridge. This avoids a stale Android abstract-socket binding preventing a later
+restart. Both that bridge and the TCP Metro listener on `127.0.0.1:8081` start
+and stop with the proxy.
+
 The application ID is `ai.edgez.androiddevtools.runtime`. No separate Expo Go
 installation is required.
 
@@ -126,9 +131,8 @@ their config-plugin options change; JavaScript-only changes need only Metro.
 4. Copy the peer ID shown by the app into
    `LIBP2P_AGENT_MOBILE_PEER_ID` for `adb-sidecar`.
 
-The foreground service restores the EdgeZ tunnel after boot when join
-configuration exists. Wireless Debugging itself may need to be enabled again
-after a device reboot.
+The EdgeZ tunnel does not restart after boot. Enable Wireless Debugging if
+needed, then press **Start proxy** when you want the foreground service to run.
 
 ## Rebuild the native libp2p libraries
 

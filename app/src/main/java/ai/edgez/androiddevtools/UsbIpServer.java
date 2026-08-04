@@ -35,6 +35,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -47,7 +48,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 final class UsbIpServer implements AutoCloseable {
     static final int ROUTE_PORT = 3240;
-    private static final String SOCKET_NAME = "edgez-usbip";
+    private static final AtomicInteger SOCKET_SEQUENCE = new AtomicInteger();
     private static final String TAG = "AndroidDevTools";
     static final String ACTION_USB_PERMISSION =
             "ai.edgez.androiddevtools.USB_IP_PERMISSION";
@@ -74,10 +75,12 @@ final class UsbIpServer implements AutoCloseable {
 
     private final Context context;
     private final UsbManager usbManager;
+    private final String socketName;
     private final ExecutorService clients = Executors.newCachedThreadPool();
     private final Set<LocalSocket> sockets = ConcurrentHashMap.newKeySet();
     private final Set<DeviceSession> deviceSessions = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean running = new AtomicBoolean();
+    private final AtomicBoolean receiverRegistered = new AtomicBoolean();
     private volatile LocalServerSocket listener;
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
@@ -103,27 +106,54 @@ final class UsbIpServer implements AutoCloseable {
     UsbIpServer(Context context) {
         this.context = context.getApplicationContext();
         usbManager = this.context.getSystemService(UsbManager.class);
+        socketName = "edgez-usbip-" + android.os.Process.myPid()
+                + "-" + SOCKET_SEQUENCE.incrementAndGet();
     }
 
     void start() throws IOException {
         if (!running.compareAndSet(false, true)) {
             return;
         }
-        IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
-        filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
-        filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
-        if (Build.VERSION.SDK_INT >= 33) {
-            context.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            context.registerReceiver(usbReceiver, filter);
-        }
-        for (UsbDevice device : usbManager.getDeviceList().values()) {
-            requestPermission(device);
-        }
+        LocalServerSocket newListener = null;
+        try {
+            // Bind before registering callbacks so a failed bind cannot leak a
+            // receiver or a half-started executor into the next proxy run.
+            newListener = new LocalServerSocket(socketName);
+            listener = newListener;
 
-        listener = new LocalServerSocket(SOCKET_NAME);
-        clients.execute(this::acceptLoop);
-        Log.i(TAG, "USB/IP server listening on abstract socket @" + SOCKET_NAME);
+            IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
+            filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+            filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
+            if (Build.VERSION.SDK_INT >= 33) {
+                context.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                context.registerReceiver(usbReceiver, filter);
+            }
+            receiverRegistered.set(true);
+            for (UsbDevice device : usbManager.getDeviceList().values()) {
+                requestPermission(device);
+            }
+
+            clients.execute(this::acceptLoop);
+            Log.i(TAG, "USB/IP server listening on abstract socket @" + socketName);
+        } catch (IOException | RuntimeException exception) {
+            running.set(false);
+            listener = null;
+            if (receiverRegistered.compareAndSet(true, false)) {
+                try {
+                    context.unregisterReceiver(usbReceiver);
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+            if (newListener != null) {
+                try {
+                    newListener.close();
+                } catch (IOException ignored) {
+                }
+            }
+            clients.shutdownNow();
+            throw exception;
+        }
     }
 
     List<String> exportedDevices() {
@@ -136,10 +166,15 @@ final class UsbIpServer implements AutoCloseable {
         return devices;
     }
 
+    String socketName() {
+        return socketName;
+    }
+
     private void acceptLoop() {
-        while (running.get()) {
+        LocalServerSocket server = listener;
+        while (running.get() && server != null) {
             try {
-                LocalSocket socket = listener.accept();
+                LocalSocket socket = server.accept();
                 sockets.add(socket);
                 clients.execute(() -> handleClient(socket));
             } catch (IOException exception) {
@@ -940,9 +975,11 @@ final class UsbIpServer implements AutoCloseable {
         if (!running.compareAndSet(true, false)) {
             return;
         }
-        try {
-            context.unregisterReceiver(usbReceiver);
-        } catch (IllegalArgumentException ignored) {
+        if (receiverRegistered.compareAndSet(true, false)) {
+            try {
+                context.unregisterReceiver(usbReceiver);
+            } catch (IllegalArgumentException ignored) {
+            }
         }
         LocalServerSocket currentListener = listener;
         listener = null;
@@ -964,6 +1001,14 @@ final class UsbIpServer implements AutoCloseable {
         }
         sockets.clear();
         clients.shutdownNow();
+        try {
+            if (!clients.awaitTermination(2, TimeUnit.SECONDS)) {
+                Log.w(TAG, "USB/IP worker shutdown timed out");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        Log.i(TAG, "USB/IP server stopped and socket @" + socketName + " released");
     }
 
     private static final class Submit {

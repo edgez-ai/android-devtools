@@ -77,11 +77,11 @@ public final class ProxyService extends Service {
     @Override
     public void onDestroy() {
         stopping = true;
-        SERVICE_RUNNING.set(false);
-        executor.shutdownNow();
         stopUsbIpServer();
         stopNativeClient();
+        executor.shutdownNow();
         stopForeground(STOP_FOREGROUND_REMOVE);
+        SERVICE_RUNNING.set(false);
         if (!failed) {
             ProxyStatus.publish(this, ProxyStatus.DISCONNECTED, "");
         }
@@ -117,7 +117,9 @@ public final class ProxyService extends Service {
             if (stopping || Thread.currentThread().isInterrupted()) {
                 return;
             }
-            String response = NativeBridge.nativeStartClient(ConfigStore.clientConfig(this));
+            JSONObject runtimeConfig = new JSONObject(ConfigStore.clientConfig(this));
+            runtimeConfig.put("usbip_socket_name", usbIpServer.socketName());
+            String response = NativeBridge.nativeStartClient(runtimeConfig.toString());
             JSONObject result = new JSONObject(response);
             if (!result.optBoolean("ok")) {
                 throw new IllegalStateException(result.optString("error", response));
@@ -185,6 +187,7 @@ public final class ProxyService extends Service {
         usbIpServer = server;
         Log.i(TAG, "USB/IP stream available on libp2p target port "
                 + UsbIpServer.ROUTE_PORT
+                + "; socket=@" + server.socketName()
                 + "; exported devices=" + server.exportedDevices());
     }
 
