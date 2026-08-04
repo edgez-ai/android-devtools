@@ -50,7 +50,10 @@ does not inherit the shell's `PATH`.
 
 Expo SDK 57's autolinking Gradle plugin also launches Node internally before
 project configuration is available. The postinstall step patches those local
-`node_modules` launch points to use the Node executable that ran `npm install`.
+`node_modules` launch points—including Expo Constants, Expo Modules Core, and
+React Native's CLI resolver—to use the Node executable that ran `npm install`.
+It also backports Expo's deferred publication setup so Android Studio sync waits
+for AGP to register the `release` software component.
 
 The postinstall script applies the CMake version needed by the current Android
 SDK installation.
