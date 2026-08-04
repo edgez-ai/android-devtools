@@ -124,6 +124,7 @@ typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
 extern "C" {
 #endif
 
+extern void EdgeNotifyUSBEvent(char* rawEvent);
 extern char* EdgeCreateIdentity(char* name);
 extern char* EdgeStartClient(char* configJSON);
 extern char* EdgeStopClient(void);
