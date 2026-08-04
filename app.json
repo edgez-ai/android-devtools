@@ -4,7 +4,7 @@
     "slug": "edgez-android-devtools",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "edgez-devtools",
+    "scheme": ["edgez-devtools", "exp+edgez-android-devtools"],
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "android": {
@@ -30,8 +30,10 @@
         {
           "launchMode": "launcher",
           "embeddedBundle": true,
+          "toolsButton": false,
           "showMenuAtLaunch": false,
-          "skipOnboarding": true
+          "skipOnboarding": true,
+          "addGeneratedScheme": false
         }
       ],
       "./plugins/withEdgezNative",

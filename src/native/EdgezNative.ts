@@ -18,7 +18,7 @@ type EdgezNativeModule = {
   scanAndJoin(): Promise<string>;
   beginPairing(): Promise<void>;
   requestBatteryExemption(): Promise<void>;
-  openProjectLauncher(): Promise<void>;
+  openProjectLauncher(tab: 'home' | 'settings'): Promise<void>;
   startProxy(): Promise<void>;
   stopProxy(): Promise<void>;
 };

@@ -30,16 +30,14 @@
     <meta-data android:name="DEV_CLIENT_TRY_TO_LAUNCH_LAST_BUNDLE" android:value="false"/>
     <meta-data android:name="EXDevClientEmbeddedBundle" android:value="true"/>
     <meta-data android:name="EXDevMenuIsOnboardingFinished" android:value="true"/>
+    <meta-data android:name="EXDevMenuShowFloatingActionButton" android:value="false"/>
     <meta-data android:name="EXDevMenuShowsAtLaunch" android:value="false"/>
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
     <meta-data android:name="expo.modules.updates.ENABLE_BSDIFF_PATCH_SUPPORT" android:value="true"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
-    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize|assetsPaths" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait">
-      <intent-filter>
-        <action android:name="android.intent.action.MAIN"/>
-        <category android:name="android.intent.category.LAUNCHER"/>
-      </intent-filter>
+    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize|assetsPaths" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="false" android:screenOrientation="portrait"/>
+    <activity android:name=".ExpoRuntimeActivity" android:process=":expo" android:taskAffinity="${applicationId}.expo" android:excludeFromRecents="true" android:exported="true" android:launchMode="singleTask" android:theme="@style/Theme.App.SplashScreen">
       <intent-filter>
         <action android:name="android.intent.action.VIEW"/>
         <category android:name="android.intent.category.DEFAULT"/>
@@ -48,5 +46,14 @@
         <data android:scheme="exp+edgez-android-devtools"/>
       </intent-filter>
     </activity>
+    <activity android:name="ai.edgez.androiddevtools.MainActivity" android:exported="true" android:launchMode="singleTask" android:label="@string/edgez_app_name" android:theme="@style/EdgezAppTheme" tools:replace="android:exported">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity>
+    <activity android:name="expo.modules.devlauncher.launcher.DevLauncherActivity" android:process=":expo" android:taskAffinity="${applicationId}.expo" android:excludeFromRecents="true"/>
+    <activity android:name="expo.modules.devlauncher.compose.AuthActivity" android:process=":expo" android:taskAffinity="${applicationId}.expo" android:excludeFromRecents="true"/>
+    <activity android:name="expo.modules.devlauncher.launcher.errors.DevLauncherErrorActivity" android:process=":expo" android:taskAffinity="${applicationId}.expo" android:excludeFromRecents="true"/>
   </application>
 </manifest>

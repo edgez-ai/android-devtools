@@ -198,9 +198,9 @@ export default function App() {
     [run],
   );
 
-  const openExpoProjects = useCallback(() => {
-    setStatusMessage('Opening the Expo project launcher…');
-    void requireEdgezNative().openProjectLauncher().catch(error => {
+  const openExpoProjects = useCallback((tab: 'home' | 'settings') => {
+    setStatusMessage(`Opening Expo ${tab}…`);
+    void requireEdgezNative().openProjectLauncher(tab).catch(error => {
       const message = error instanceof Error ? error.message : String(error);
       setStatusMessage(`Error: ${message}`);
       Alert.alert('EdgeZ DevTools', message);
@@ -360,9 +360,13 @@ export default function App() {
           <Text style={styles.appTabIcon}>⌂</Text>
           <Text style={styles.appTabTextSelected}>Android DevTools</Text>
         </Pressable>
-        <Pressable accessibilityRole="tab" onPress={openExpoProjects} style={styles.appTab}>
+        <Pressable accessibilityRole="tab" onPress={() => openExpoProjects('home')} style={styles.appTab}>
           <Text style={styles.appTabIcon}>⚛</Text>
           <Text style={styles.appTabText}>Expo</Text>
+        </Pressable>
+        <Pressable accessibilityRole="tab" onPress={() => openExpoProjects('settings')} style={styles.appTab}>
+          <Text style={styles.appTabIcon}>⚙</Text>
+          <Text style={styles.appTabText}>Settings</Text>
         </Pressable>
       </View>
     </SafeAreaView>

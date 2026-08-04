@@ -23,7 +23,6 @@ import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.UiThreadUtil;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
@@ -35,7 +34,6 @@ import org.json.JSONObject;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.lang.reflect.Method;
 
 public final class EdgezNativeModule extends ReactContextBaseJavaModule
         implements ActivityEventListener {
@@ -196,20 +194,18 @@ public final class EdgezNativeModule extends ReactContextBaseJavaModule
     }
 
     @ReactMethod
-    public void openProjectLauncher(Promise promise) {
-        UiThreadUtil.runOnUiThread(() -> {
-            try {
-                Class<?> controllerClass = Class.forName(
-                        "expo.modules.devlauncher.DevLauncherController");
-                Method getInstance = controllerClass.getMethod("getInstance");
-                Object controller = getInstance.invoke(null);
-                Method navigateToLauncher = controllerClass.getMethod("navigateToLauncher");
-                promise.resolve(null);
-                navigateToLauncher.invoke(controller);
-            } catch (ReflectiveOperationException | RuntimeException exception) {
-                promise.reject("EDGEZ_PROJECT_LAUNCHER", exception);
-            }
-        });
+    public void openProjectLauncher(String tab, Promise promise) {
+        try {
+            Class<?> launcherActivity = Class.forName(
+                    "expo.modules.devlauncher.launcher.DevLauncherActivity");
+            Intent intent = new Intent(getReactApplicationContext(), launcherActivity)
+                    .putExtra("edgez.rootTab", "settings".equals(tab) ? "settings" : "home")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            getReactApplicationContext().startActivity(intent);
+            promise.resolve(null);
+        } catch (ReflectiveOperationException | RuntimeException exception) {
+            promise.reject("EDGEZ_PROJECT_LAUNCHER", exception);
+        }
     }
 
     @ReactMethod

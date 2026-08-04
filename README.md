@@ -1,18 +1,23 @@
 # EdgeZ Android DevTools
 
-EdgeZ Android DevTools is an Expo SDK 57 React Native development client for
-connecting a physical Android device to a remote workspace through
-[`adb-sidecar`](../adb-sidecar). It combines one installable application with:
+EdgeZ Android DevTools combines the existing native Android application with an
+Expo SDK 57 React Native development runtime for connecting a physical Android
+device to a remote workspace through [`adb-sidecar`](../adb-sidecar). The one
+installable application contains:
 
-- an embedded React Native version of the original Android setup UI as the
-  default **Android DevTools** home tab;
+- the original native Android DevTools UI as the default launcher and home;
 - the Expo development-client runtime for loading projects from Metro;
 - `react-native-ble-plx` for Bluetooth Low Energy central/client access;
 - the existing EdgeZ libp2p, Wireless Debugging, USB/IP, and scrcpy Android
   implementation.
 
-The existing Expo development-client launcher is available from the **Expo**
-tab. This is a custom development client, not the store version of Expo Go. Native
+Android DevTools runs in the main app process. Expo Home, Settings, and Metro
+projects run only when requested, in an isolated `:expo` process and task, so a
+test bundle cannot replace the native Android DevTools screen. The Expo
+launcher and dev-menu Home actions bring the native task back to the foreground.
+There is no permanent Expo tab in the native UI.
+
+This is a custom development client, not the store version of Expo Go. Native
 modules such as BLE require this APK and cannot be added by installing only the
 standard Expo runtime.
 
@@ -57,8 +62,9 @@ cd android
 ./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a
 ```
 
-`assembleDebug` embeds the Android DevTools JavaScript bundle, so the Home tab
-works without Metro. The single merged APK is written to:
+`assembleDebug` packages the native Android DevTools app, the Expo development
+runtime, its embedded fallback JavaScript bundle, and native modules into one
+APK. The native Home works without Metro. The merged APK is written to:
 
 ```text
 android/app/build/outputs/apk/debug/app-debug.apk
@@ -76,10 +82,10 @@ Start Metro for this development client:
 npm start
 ```
 
-Install and launch the debug APK, then select the local development server in
-the development-client launcher. For an attached device, Expo CLI normally
-configures the required ADB port forwarding. The React Native screen also has
-an **Open developer menu** button.
+Install the debug APK and open a development-client URL from Expo CLI (or scan
+its QR code) to start the isolated Expo runtime. For an attached device, Expo
+CLI normally configures the required ADB port forwarding. Launching the app
+normally always opens the native Android DevTools screen.
 
 The application ID is `ai.edgez.androiddevtools.runtime`. No separate Expo Go
 installation is required.
