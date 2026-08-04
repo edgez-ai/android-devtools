@@ -27,14 +27,17 @@ public final class ProxyService extends Service {
     private static final int NOTIFICATION_ID = 4101;
     private static final long WIRELESS_DEBUG_PROMPT_INTERVAL_MS = 30_000L;
     private static final AtomicLong LAST_WIRELESS_DEBUG_PROMPT_MS = new AtomicLong();
+    private static final AtomicBoolean SERVICE_RUNNING = new AtomicBoolean();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean startScheduled = new AtomicBoolean();
     private volatile boolean stopping;
+    private volatile boolean failed;
     private volatile UsbIpServer usbIpServer;
 
     @Override
     public void onCreate() {
         super.onCreate();
+        SERVICE_RUNNING.set(true);
         NativeBridge.initialize(this);
         createNotificationChannel();
         ProxyStatus.publish(this, ProxyStatus.CONNECTING, "");
@@ -55,6 +58,10 @@ public final class ProxyService extends Service {
             requestStop();
             return START_NOT_STICKY;
         }
+        if (intent == null || !ACTION_START.equals(intent.getAction())) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         if (!stopping && startScheduled.compareAndSet(false, true)) {
             executor.execute(() -> {
                 try {
@@ -64,17 +71,18 @@ public final class ProxyService extends Service {
                 }
             });
         }
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
     @Override
     public void onDestroy() {
         stopping = true;
+        SERVICE_RUNNING.set(false);
         executor.shutdownNow();
         stopUsbIpServer();
         stopNativeClient();
         stopForeground(STOP_FOREGROUND_REMOVE);
-        if (stopping) {
+        if (!failed) {
             ProxyStatus.publish(this, ProxyStatus.DISCONNECTED, "");
         }
         super.onDestroy();
@@ -140,8 +148,9 @@ public final class ProxyService extends Service {
         } catch (Throwable throwable) {
             Log.e(TAG, "Unable to start proxy", throwable);
             String message = safeMessage(throwable);
+            failed = true;
             ProxyStatus.publish(this, ProxyStatus.ERROR, message);
-            updateNotification(getString(R.string.proxy_error, message));
+            stopSelf();
         }
     }
 
@@ -187,21 +196,20 @@ public final class ProxyService extends Service {
         }
     }
 
-    static boolean startIfConfigured(Context context) {
-        if (!ConfigStore.isConfigured(context)) {
-            return false;
-        }
-        start(context);
-        return true;
-    }
-
     static void start(Context context) {
         Intent intent = new Intent(context, ProxyService.class).setAction(ACTION_START);
         context.startForegroundService(intent);
     }
 
     static void stop(Context context) {
-        context.startService(new Intent(context, ProxyService.class).setAction(ACTION_STOP));
+        boolean stopped = context.stopService(new Intent(context, ProxyService.class));
+        if (!stopped) {
+            ProxyStatus.publish(context, ProxyStatus.DISCONNECTED, "");
+        }
+    }
+
+    static boolean isRunning() {
+        return SERVICE_RUNNING.get();
     }
 
     static void refreshAdbTarget(Context context) {

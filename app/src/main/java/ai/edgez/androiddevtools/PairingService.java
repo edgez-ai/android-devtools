@@ -166,7 +166,6 @@ public final class PairingService extends Service {
                             "Wireless pairing succeeded; connect endpoint is not advertised yet");
                 }
 
-                ProxyService.start(this);
                 postResult(
                         localAdb == null
                                 ? getString(R.string.pair_waiting_endpoint)

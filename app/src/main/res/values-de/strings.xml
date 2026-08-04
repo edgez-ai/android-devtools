@@ -55,7 +55,7 @@
     <string name="status_qr_fields_missing">Dies ist kein EdgeZ-Kopplungs-QR-Code. Er muss serial_number und join_key enthalten.</string>
     <string name="status_qr_invalid">Dies ist kein gültiger EdgeZ-Kopplungs-QR-Code.</string>
     <string name="status_joining">Beitritt zum EdgeZ-Netzwerk…</string>
-    <string name="status_joined">Beitritt erfolgreich. Die Mesh-Verbindung wird im Hintergrund gestartet. Peer-ID: %1$s</string>
+    <string name="status_joined">Beitritt erfolgreich. Der Proxy ist gestoppt; tippe auf „Proxy starten“, wenn du bereit bist. Peer-ID: %1$s</string>
     <string name="status_permissions_before_pairing">Erteile vor dem Koppeln die Berechtigungen für Benachrichtigungen und WLAN-Geräte in der Nähe.</string>
     <string name="status_join_before_pairing">Tritt vor dem Koppeln dem EdgeZ-Netzwerk bei.</string>
     <string name="status_pairing_search">Kopplungssuche gestartet. Öffne „Gerät mit Kopplungscode koppeln“ und antworte auf die Android-DevTools-Benachrichtigung.</string>
@@ -76,7 +76,7 @@
     <string name="pair_code_invalid">Der Kopplungscode für WLAN-Debugging muss aus sechs Ziffern bestehen.</string>
     <string name="pair_endpoint_expired">Der Kopplungsendpunkt für WLAN-Debugging ist nicht mehr verfügbar.</string>
     <string name="pair_waiting_endpoint">WLAN-Debugging gekoppelt. Warten auf den Verbindungsendpunkt.</string>
-    <string name="pair_proxy_starting">WLAN-Debugging gekoppelt. Der EdgeZ-ADB-Proxy wird gestartet.</string>
+    <string name="pair_proxy_starting">WLAN-Debugging gekoppelt. Tippe auf „Proxy starten“, wenn du bereit bist.</string>
     <string name="pair_failed">Kopplung fehlgeschlagen: %1$s</string>
     <string name="notification_searching_title">WLAN-Debugging wird gesucht</string>
     <string name="notification_searching_text">Öffne in den Android-Einstellungen „Gerät mit Kopplungscode koppeln“.</string>

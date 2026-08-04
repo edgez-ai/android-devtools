@@ -55,7 +55,7 @@
     <string name="status_qr_fields_missing">これは EdgeZ のペア設定用 QR コードではありません。serial_number と join_key が必要です。</string>
     <string name="status_qr_invalid">これは有効な EdgeZ ペア設定用 QR コードではありません。</string>
     <string name="status_joining">EdgeZ ネットワークに参加中…</string>
-    <string name="status_joined">参加しました。メッシュ接続をバックグラウンドで開始しています。ピア ID：%1$s</string>
+    <string name="status_joined">参加しました。プロキシは停止中です。準備ができたら「プロキシを開始」をタップしてください。ピア ID：%1$s</string>
     <string name="status_permissions_before_pairing">ペア設定を開始する前に、通知と付近の Wi-Fi の権限を許可してください。</string>
     <string name="status_join_before_pairing">ペア設定の前に EdgeZ ネットワークに参加してください。</string>
     <string name="status_pairing_search">ペア設定の検索を開始しました。「ペア設定コードによるデバイスのペア設定」を開き、EdgeZ DevTools の通知に返信してください。</string>
@@ -76,7 +76,7 @@
     <string name="pair_code_invalid">ワイヤレス デバッグのペア設定コードは 6 桁の数字である必要があります。</string>
     <string name="pair_endpoint_expired">ワイヤレス デバッグのペア設定エンドポイントは利用できなくなりました。</string>
     <string name="pair_waiting_endpoint">ワイヤレス デバッグをペア設定しました。接続エンドポイントを待っています。</string>
-    <string name="pair_proxy_starting">ワイヤレス デバッグをペア設定しました。EdgeZ ADB プロキシを開始しています。</string>
+    <string name="pair_proxy_starting">ワイヤレス デバッグをペア設定しました。準備ができたら「プロキシを開始」をタップしてください。</string>
     <string name="pair_failed">ペア設定に失敗しました：%1$s</string>
     <string name="notification_searching_title">ワイヤレス デバッグを検索中</string>
     <string name="notification_searching_text">Android の設定で「ペア設定コードによるデバイスのペア設定」を開いてください。</string>

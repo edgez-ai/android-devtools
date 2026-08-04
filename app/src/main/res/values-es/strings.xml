@@ -55,7 +55,7 @@
     <string name="status_qr_fields_missing">Este no es un código QR de vinculación de EdgeZ. Debe contener serial_number y join_key.</string>
     <string name="status_qr_invalid">Este no es un código QR de vinculación de EdgeZ válido.</string>
     <string name="status_joining">Uniéndose a la red EdgeZ…</string>
-    <string name="status_joined">Conexión completada. La conexión de red se está iniciando en segundo plano. ID del par: %1$s</string>
+    <string name="status_joined">Conexión completada. El proxy está detenido; toca Iniciar proxy cuando quieras. ID del par: %1$s</string>
     <string name="status_permissions_before_pairing">Concede los permisos de notificaciones y Wi-Fi cercano antes de iniciar la vinculación.</string>
     <string name="status_join_before_pairing">Únete a la red EdgeZ antes de vincular.</string>
     <string name="status_pairing_search">Se inició la búsqueda de vinculación. Abre «Vincular dispositivo con código de vinculación» y responde a la notificación de EdgeZ DevTools.</string>
@@ -76,7 +76,7 @@
     <string name="pair_code_invalid">El código de vinculación de la depuración inalámbrica debe contener seis dígitos.</string>
     <string name="pair_endpoint_expired">El punto de vinculación de la depuración inalámbrica ya no está disponible.</string>
     <string name="pair_waiting_endpoint">Depuración inalámbrica vinculada. Esperando su punto de conexión.</string>
-    <string name="pair_proxy_starting">Depuración inalámbrica vinculada. El proxy ADB de EdgeZ se está iniciando.</string>
+    <string name="pair_proxy_starting">Depuración inalámbrica vinculada. Toca Iniciar proxy cuando quieras.</string>
     <string name="pair_failed">Error de vinculación: %1$s</string>
     <string name="notification_searching_title">Buscando depuración inalámbrica</string>
     <string name="notification_searching_text">Abre «Vincular dispositivo con código de vinculación» en los ajustes de Android.</string>

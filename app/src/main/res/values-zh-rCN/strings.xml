@@ -55,7 +55,7 @@
     <string name="status_qr_fields_missing">这不是 EdgeZ 配对二维码。二维码必须包含 serial_number 和 join_key。</string>
     <string name="status_qr_invalid">这不是有效的 EdgeZ 配对二维码。</string>
     <string name="status_joining">正在加入 EdgeZ 网络…</string>
-    <string name="status_joined">加入成功。网状网络连接正在后台启动。对等节点 ID：%1$s</string>
+    <string name="status_joined">加入成功。代理当前已停止；准备好后请点按“启动代理”。对等节点 ID：%1$s</string>
     <string name="status_permissions_before_pairing">开始配对前，请授予通知和“附近 Wi-Fi”权限。</string>
     <string name="status_join_before_pairing">配对前请先加入 EdgeZ 网络。</string>
     <string name="status_pairing_search">已开始搜索配对。打开“使用配对码配对设备”，然后回复 EdgeZ DevTools 通知。</string>
@@ -76,7 +76,7 @@
     <string name="pair_code_invalid">无线调试配对码必须包含六位数字。</string>
     <string name="pair_endpoint_expired">无线调试配对端点已不可用。</string>
     <string name="pair_waiting_endpoint">无线调试已配对。正在等待连接端点。</string>
-    <string name="pair_proxy_starting">无线调试已配对。EdgeZ ADB 代理正在启动。</string>
+    <string name="pair_proxy_starting">无线调试已配对。准备好后请点按“启动代理”。</string>
     <string name="pair_failed">配对失败：%1$s</string>
     <string name="notification_searching_title">正在搜索无线调试</string>
     <string name="notification_searching_text">请在 Android 设置中打开“使用配对码配对设备”。</string>

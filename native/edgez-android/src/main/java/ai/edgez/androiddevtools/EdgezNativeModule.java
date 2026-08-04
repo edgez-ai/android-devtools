@@ -256,7 +256,6 @@ public final class EdgezNativeModule extends ReactContextBaseJavaModule
             String peerId = ConfigStore.join(
                     getReactApplicationContext(), ConfigStore.DEFAULT_JOIN_ENDPOINT,
                     serial, joinKey, Build.MANUFACTURER + " " + Build.MODEL);
-            ProxyService.start(getReactApplicationContext());
             emitStatus();
             promise.resolve(peerId);
         } catch (JSONException exception) {

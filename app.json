@@ -20,8 +20,7 @@
         "android.permission.NEARBY_WIFI_DEVICES",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE",
-        "android.permission.POST_NOTIFICATIONS",
-        "android.permission.RECEIVE_BOOT_COMPLETED"
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "plugins": [

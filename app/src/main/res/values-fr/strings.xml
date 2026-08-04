@@ -55,7 +55,7 @@
     <string name="status_qr_fields_missing">Ce n’est pas un code QR d’association EdgeZ. Il doit contenir serial_number et join_key.</string>
     <string name="status_qr_invalid">Ce n’est pas un code QR d’association EdgeZ valide.</string>
     <string name="status_joining">Connexion au réseau EdgeZ…</string>
-    <string name="status_joined">Connexion réussie. La connexion au réseau démarre en arrière-plan. ID du pair : %1$s</string>
+    <string name="status_joined">Connexion réussie. Le proxy est arrêté ; touchez Démarrer le proxy lorsque vous êtes prêt. ID du pair : %1$s</string>
     <string name="status_permissions_before_pairing">Accordez les autorisations de notification et de Wi-Fi à proximité avant de commencer l’association.</string>
     <string name="status_join_before_pairing">Rejoignez le réseau EdgeZ avant l’association.</string>
     <string name="status_pairing_search">Recherche d’association lancée. Ouvrez « Associer l’appareil avec un code d’association », puis répondez à la notification EdgeZ DevTools.</string>
@@ -76,7 +76,7 @@
     <string name="pair_code_invalid">Le code d’association du débogage sans fil doit contenir six chiffres.</string>
     <string name="pair_endpoint_expired">Le point de terminaison d’association du débogage sans fil n’est plus disponible.</string>
     <string name="pair_waiting_endpoint">Débogage sans fil associé. En attente de son point de terminaison de connexion.</string>
-    <string name="pair_proxy_starting">Débogage sans fil associé. Le proxy ADB EdgeZ démarre.</string>
+    <string name="pair_proxy_starting">Débogage sans fil associé. Touchez Démarrer le proxy lorsque vous êtes prêt.</string>
     <string name="pair_failed">Échec de l’association : %1$s</string>
     <string name="notification_searching_title">Recherche du débogage sans fil</string>
     <string name="notification_searching_text">Ouvrez « Associer l’appareil avec un code d’association » dans les paramètres Android.</string>

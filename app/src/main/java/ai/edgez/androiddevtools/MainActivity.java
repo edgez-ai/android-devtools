@@ -78,6 +78,7 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(buildContent());
+        reconcileProxyStatus();
         refreshPeerId();
         refreshPermissionStatus();
         refreshProxyStatus();
@@ -89,6 +90,7 @@ public final class MainActivity extends Activity {
     protected void onStart() {
         super.onStart();
         registerProxyStatusReceiver();
+        reconcileProxyStatus();
         refreshProxyStatus();
     }
 
@@ -108,7 +110,8 @@ public final class MainActivity extends Activity {
         refreshPermissionStatus();
         refreshUsbStatus();
         refreshStepMarkers();
-        maybeShowWirelessDebugDialog(consumeWirelessDebugPrompt());
+        boolean promptRequested = consumeWirelessDebugPrompt();
+        maybeShowWirelessDebugDialog(promptRequested || !isWirelessDebugEnabled());
     }
 
     @Override
@@ -322,7 +325,6 @@ public final class MainActivity extends Activity {
                 refreshPeerId();
                 refreshStepMarkers();
                 showStep(2);
-                ProxyService.start(this);
                 showStatus(getString(R.string.status_joined, peerId));
             });
         });
@@ -348,22 +350,21 @@ public final class MainActivity extends Activity {
             showStatus(getString(R.string.status_join_before_proxy));
             return;
         }
+        if (!isWirelessDebugEnabled()) {
+            maybeShowWirelessDebugDialog(true);
+            return;
+        }
         ProxyService.start(this);
         showStatus(getString(R.string.status_proxy_start));
     }
 
     private void toggleProxy() {
-        String state = ProxyStatus.current(this).state;
-        if (ProxyStatus.CONNECTING.equals(state)
-                || ProxyStatus.MESH_ONLINE.equals(state)
-                || ProxyStatus.ADB_ONLINE.equals(state)) {
+        if (ProxyService.isRunning()) {
             ProxyService.stop(this);
             showStatus(getString(R.string.status_proxy_stop_requested));
             return;
         }
-        if (!ProxyStatus.STOPPING.equals(state)) {
-            startProxy();
-        }
+        startProxy();
     }
 
     private void openWirelessDebugging() {
@@ -388,26 +389,27 @@ public final class MainActivity extends Activity {
     }
 
     private void maybeShowWirelessDebugDialog(boolean force) {
-        if (!force || !ConfigStore.isConfigured(this) || !hasRuntimePermissions()) {
+        if (!force || !hasRuntimePermissions()) {
             return;
         }
+        boolean wirelessDebugEnabled = isWirelessDebugEnabled();
         String proxyState = ProxyStatus.current(this).state;
-        if (ProxyStatus.CONNECTING.equals(proxyState)
+        if (wirelessDebugEnabled && (ProxyStatus.CONNECTING.equals(proxyState)
                 || ProxyStatus.MESH_ONLINE.equals(proxyState)
-                || ProxyStatus.ADB_ONLINE.equals(proxyState)) {
+                || ProxyStatus.ADB_ONLINE.equals(proxyState))) {
             return;
         }
         if (isFinishing() || isDestroyed()
                 || (wirelessDebugDialog != null && wirelessDebugDialog.isShowing())) {
             return;
         }
-        int message = isWirelessDebugEnabled()
+        int message = wirelessDebugEnabled
                 ? R.string.wireless_enabled_missing : R.string.wireless_disabled;
         wirelessDebugDialog = new AlertDialog.Builder(this)
                 .setTitle(R.string.wireless_required_title)
                 .setMessage(message)
                 .setPositiveButton(R.string.open_wireless_debugging,
-                        (dialog, which) -> beginNotificationPairing())
+                        (dialog, which) -> openWirelessDebugging())
                 .setNegativeButton(R.string.later, null)
                 .setOnDismissListener(dialog -> wirelessDebugDialog = null)
                 .show();
@@ -448,8 +450,22 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshProxyStatus() {
+        reconcileProxyStatus();
         ProxyStatus.Snapshot snapshot = ProxyStatus.current(this);
         updateProxyStatus(snapshot.state, snapshot.detail);
+    }
+
+    private void reconcileProxyStatus() {
+        if (ProxyService.isRunning()) {
+            return;
+        }
+        String state = ProxyStatus.current(this).state;
+        if (ProxyStatus.CONNECTING.equals(state)
+                || ProxyStatus.MESH_ONLINE.equals(state)
+                || ProxyStatus.ADB_ONLINE.equals(state)
+                || ProxyStatus.STOPPING.equals(state)) {
+            ProxyStatus.publish(this, ProxyStatus.DISCONNECTED, "");
+        }
     }
 
     private void refreshUsbStatus() {

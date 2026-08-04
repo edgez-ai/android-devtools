@@ -91,6 +91,12 @@ The native **Open Expo project** button opens `http://127.0.0.1:8081` directly
 in the bundled development runtime. When Metro runs on the attached computer,
 forward that port first with `adb reverse tcp:8081 tcp:8081`.
 
+The EdgeZ proxy never starts at app launch, after joining, after pairing, or
+after a device reboot. The user must press **Start proxy**. Its foreground
+service is non-sticky and stops when the proxy is stopped or startup fails.
+When Wireless Debugging is off, the native Home prompts the user to enable it
+without starting the proxy.
+
 The application ID is `ai.edgez.androiddevtools.runtime`. No separate Expo Go
 installation is required.
 

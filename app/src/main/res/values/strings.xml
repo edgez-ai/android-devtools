@@ -56,7 +56,7 @@
     <string name="status_qr_fields_missing">This is not an EdgeZ pairing QR code. It must contain serial_number and join_key.</string>
     <string name="status_qr_invalid">This is not a valid EdgeZ pairing QR code.</string>
     <string name="status_joining">Joining the EdgeZ network…</string>
-    <string name="status_joined">Joined successfully. The mesh connection is starting in the background. Peer ID: %1$s</string>
+    <string name="status_joined">Joined successfully. The proxy is stopped; tap Start proxy when ready. Peer ID: %1$s</string>
     <string name="status_permissions_before_pairing">Grant notification and Nearby Wi-Fi permissions before starting pairing.</string>
     <string name="status_join_before_pairing">Join the EdgeZ network before pairing.</string>
     <string name="status_pairing_search">Pairing search started. Open “Pair device with pairing code”, then reply to the EdgeZ DevTools notification.</string>
@@ -79,7 +79,7 @@
     <string name="pair_code_invalid">The Wireless Debugging pairing code must contain six digits.</string>
     <string name="pair_endpoint_expired">The Wireless Debugging pairing endpoint is no longer available.</string>
     <string name="pair_waiting_endpoint">Wireless Debugging paired. Waiting for its connect endpoint.</string>
-    <string name="pair_proxy_starting">Wireless Debugging paired. The EdgeZ ADB proxy is starting.</string>
+    <string name="pair_proxy_starting">Wireless Debugging paired. Tap Start proxy when ready.</string>
     <string name="pair_failed">Pairing failed: %1$s</string>
     <string name="notification_searching_title">Searching for Wireless Debugging</string>
     <string name="notification_searching_text">Open “Pair device with pairing code” in Android settings.</string>
