@@ -241,7 +241,12 @@ public final class MainActivity extends Activity {
 
     private void openExpoProject() {
         Uri projectUri = Uri.parse("exp://127.0.0.1:8081");
-        Intent bundledRuntime = new Intent(Intent.ACTION_VIEW, projectUri)
+        Uri developmentClientUri = new Uri.Builder()
+                .scheme("exp+edgez-android-devtools")
+                .authority("expo-development-client")
+                .appendQueryParameter("url", "http://127.0.0.1:8081")
+                .build();
+        Intent bundledRuntime = new Intent(Intent.ACTION_VIEW, developmentClientUri)
                 .setPackage(getPackageName());
         try {
             startActivity(bundledRuntime);

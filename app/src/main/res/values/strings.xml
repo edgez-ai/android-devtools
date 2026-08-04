@@ -62,7 +62,7 @@
     <string name="status_pairing_search">Pairing search started. Open “Pair device with pairing code”, then reply to the EdgeZ DevTools notification.</string>
     <string name="status_join_before_proxy">Join the EdgeZ network first.</string>
     <string name="status_proxy_start">Proxy start requested. Check the persistent notification for status.</string>
-    <string name="status_opening_expo">Opening exp://127.0.0.1:8081 in the bundled Expo Go 57 runtime.</string>
+    <string name="status_opening_expo">Opening http://127.0.0.1:8081 in the bundled Expo SDK 57 development runtime.</string>
     <string name="status_expo_unavailable">No Expo runtime is installed in this build.</string>
     <string name="status_all_permissions">All required permissions are granted.</string>
     <string name="status_pairing_permissions">Pairing permissions granted. Allow unrestricted battery use next.</string>

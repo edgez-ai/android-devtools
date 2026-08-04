@@ -87,6 +87,10 @@ its QR code) to start the isolated Expo runtime. For an attached device, Expo
 CLI normally configures the required ADB port forwarding. Launching the app
 normally always opens the native Android DevTools screen.
 
+The native **Open Expo project** button opens `http://127.0.0.1:8081` directly
+in the bundled development runtime. When Metro runs on the attached computer,
+forward that port first with `adb reverse tcp:8081 tcp:8081`.
+
 The application ID is `ai.edgez.androiddevtools.runtime`. No separate Expo Go
 installation is required.
 
