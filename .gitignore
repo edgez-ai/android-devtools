@@ -9,3 +9,5 @@ key.properties
 *.jks
 *.keystore
 .local-secrets/
+.expo-go-sdk-57/
+.corepack-cache/

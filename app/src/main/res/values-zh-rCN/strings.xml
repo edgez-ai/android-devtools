@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">EdgeZ DevTools</string>
+    <string name="edgez_app_name">EdgeZ DevTools</string>
     <string name="hero_title">EdgeZ DevTools</string>
     <string name="hero_subtitle">通过 EdgeZ 网状网络将实体 Android 设备连接到云端工作区。</string>
     <string name="connection_status">连接状态</string>

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">EdgeZ DevTools</string>
+    <string name="edgez_app_name">EdgeZ DevTools</string>
     <string name="hero_title">EdgeZ DevTools</string>
     <string name="hero_subtitle">Connectez un appareil Android physique à votre espace de travail cloud via le réseau maillé EdgeZ.</string>
     <string name="connection_status">État de la connexion</string>

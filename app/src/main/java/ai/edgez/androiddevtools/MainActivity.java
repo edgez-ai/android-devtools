@@ -184,6 +184,9 @@ public final class MainActivity extends Activity {
         proxyToggleButton = actionButton(
                 R.string.start_proxy, view -> toggleProxy(), true);
         connection.addView(proxyToggleButton, margins(0, 12, 0, 0));
+        connection.addView(actionButton(
+                R.string.open_expo_project, view -> openExpoProject(), false),
+                margins(0, 8, 0, 0));
         content.addView(connection, margins(0, 0, 0, 12));
 
         LinearLayout tabs = new LinearLayout(this);
@@ -234,6 +237,26 @@ public final class MainActivity extends Activity {
         scroll.setFillViewport(true);
         scroll.addView(content);
         return scroll;
+    }
+
+    private void openExpoProject() {
+        Uri projectUri = Uri.parse("exp://127.0.0.1:8081");
+        Intent bundledRuntime = new Intent(Intent.ACTION_VIEW, projectUri)
+                .setPackage(getPackageName());
+        try {
+            startActivity(bundledRuntime);
+            statusText.setText(R.string.status_opening_expo);
+            return;
+        } catch (ActivityNotFoundException ignored) {
+            // The standalone EdgeZ build may use a separately installed Expo Go runtime.
+        }
+
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, projectUri));
+            statusText.setText(R.string.status_opening_expo);
+        } catch (ActivityNotFoundException exception) {
+            statusText.setText(R.string.status_expo_unavailable);
+        }
     }
 
     @SuppressWarnings("deprecation")

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">EdgeZ DevTools</string>
+    <string name="edgez_app_name">EdgeZ DevTools</string>
     <string name="hero_title">EdgeZ DevTools</string>
     <string name="hero_subtitle">Connect a physical Android device to your cloud workspace through the EdgeZ mesh.</string>
     <string name="connection_status">Connection status</string>
@@ -43,6 +43,7 @@
 
     <string name="start_proxy">Start proxy</string>
     <string name="stop_proxy">Stop proxy</string>
+    <string name="open_expo_project">Open Expo project</string>
     <string name="retry_proxy">Retry proxy</string>
     <string name="proxy_button_stopping">Stopping…</string>
 
@@ -61,6 +62,8 @@
     <string name="status_pairing_search">Pairing search started. Open “Pair device with pairing code”, then reply to the EdgeZ DevTools notification.</string>
     <string name="status_join_before_proxy">Join the EdgeZ network first.</string>
     <string name="status_proxy_start">Proxy start requested. Check the persistent notification for status.</string>
+    <string name="status_opening_expo">Opening exp://127.0.0.1:8081 in the bundled Expo Go 57 runtime.</string>
+    <string name="status_expo_unavailable">No Expo runtime is installed in this build.</string>
     <string name="status_all_permissions">All required permissions are granted.</string>
     <string name="status_pairing_permissions">Pairing permissions granted. Allow unrestricted battery use next.</string>
     <string name="status_permissions_needed">Nearby Wi-Fi and notification permissions are needed for discovery and reliable background status.</string>

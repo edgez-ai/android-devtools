@@ -45,6 +45,30 @@ The APK is written to:
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
+### Custom Expo Go 57 with BLE
+
+To build Android DevTools as an Expo Go SDK 57 runtime with
+`react-native-ble-plx` 3.5.1 compiled in:
+
+```sh
+./gradlew assembleExpoGo57
+```
+
+The task checks out the pinned Expo SDK 57 source, prepares the React Native
+0.86.2 workspace, and writes:
+
+```text
+app/build/outputs/apk/expoGo57/android-devtools-expo-go-57-ble-debug.apk
+```
+
+The first build is large because it downloads and compiles Expo Go, React
+Native, Hermes, and the Android native dependencies. Use Node 22, pnpm,
+Corepack, Git LFS, JDK 17, and an Android SDK installation. The generated APK
+targets 64-bit ARM Android devices and uses Expo Go's `host.exp.exponent`
+application ID so Expo CLI and `exp://` links work normally. A locally signed
+APK cannot update the store-signed Expo Go; uninstall the official Expo Go
+before installing this custom runtime.
+
 ### Rebuild the native libp2p client
 
 The source is pinned as the `third_party/libp2p-go` Git submodule. To rebuild
@@ -228,9 +252,10 @@ connection, so no extra libp2p ports are required.
 
 ### React Native / Expo Go
 
-Expo Go remains a dedicated Android app so that its version can match the
-project's Expo SDK. Expo CLI installs or updates the compatible version through
-the proxied ADB connection.
+The custom APK above combines Android DevTools, Expo Go SDK 57, and the native
+`react-native-ble-plx` module in one application. Android DevTools owns the
+launcher screen; tapping **Open Expo project** opens
+`exp://127.0.0.1:8081` directly in the embedded Expo runtime.
 
 EdgeZ Devtools listens on device `127.0.0.1:8081` and opens a reverse stream
 over the existing tap-tcp libp2p protocol for every Metro HTTP or WebSocket
@@ -245,15 +270,27 @@ adb connect 127.0.0.1:5555
 npx expo start --host localhost --port 8081
 ```
 
-Expo CLI can install the Expo Go version that matches the project through the
-proxied ADB connection. Launch the loopback URL explicitly (Expo Go does not
-discover a libp2p route automatically):
+Install the matching JavaScript package in the Expo project:
+
+```sh
+npx expo install react-native-ble-plx@3.5.1
+```
+
+Then tap **Open Expo project**, or launch the loopback URL explicitly:
 
 ```sh
 adb -s 127.0.0.1:5555 shell am start \
   -a android.intent.action.VIEW \
   -d exp://127.0.0.1:8081
 ```
+
+The host manifest includes BLE scan/connect permissions. The Metro app must
+still request `BLUETOOTH_SCAN` and `BLUETOOTH_CONNECT` at runtime on Android 12
+and newer, or `ACCESS_FINE_LOCATION` on Android 11 and older, before scanning.
+This runtime supports BLE central/client operations provided by
+`react-native-ble-plx`; Bluetooth Classic and BLE peripheral mode are outside
+that library's scope. Because the native module is fixed in the APK, keep the
+Metro package on version 3.5.1 or rebuild the runtime when upgrading it.
 
 For a non-Expo React Native app or an Expo development build, use the same ADB
 device with `npx react-native run-android` or `npx expo run:android` and point

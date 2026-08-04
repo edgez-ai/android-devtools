@@ -281,7 +281,7 @@ public final class ProxyService extends Service {
         Notification.Builder builder = new Notification.Builder(this, CHANNEL_ID);
         return builder
                 .setSmallIcon(android.R.drawable.stat_sys_upload_done)
-                .setContentTitle(getString(R.string.app_name))
+                .setContentTitle(getString(R.string.edgez_app_name))
                 .setContentText(text)
                 .setStyle(new Notification.BigTextStyle().bigText(text))
                 .setContentIntent(pendingIntent)
