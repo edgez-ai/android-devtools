@@ -8,6 +8,7 @@ installable application contains:
 - the original native Android DevTools UI as the default launcher and home;
 - the Expo development-client runtime for loading projects from Metro;
 - `react-native-ble-plx` for Bluetooth Low Energy central/client access;
+- the ESP-IDF provisioning bridge for secure BLE Wi-Fi and custom-endpoint provisioning;
 - the existing EdgeZ libp2p, Wireless Debugging, USB/IP, and scrcpy Android
   implementation.
 
@@ -41,6 +42,15 @@ Use Node.js 22 and JDK 17:
 ```sh
 npm ci
 ```
+
+The generated Gradle project resolves Node from an optional
+`edgezNodeExecutable` Gradle property, `NODE_BINARY`, standard Homebrew paths,
+or an installed NVM Node 22. This lets Android Studio sync when its GUI process
+does not inherit the shell's `PATH`.
+
+Expo SDK 57's autolinking Gradle plugin also launches Node internally before
+project configuration is available. The postinstall step patches those local
+`node_modules` launch points to use the Node executable that ran `npm install`.
 
 The postinstall script applies the CMake version needed by the current Android
 SDK installation.
@@ -120,6 +130,10 @@ Android still requires runtime Bluetooth permissions before scanning. The
 development client declares Bluetooth scan/connect and legacy location
 permissions in `app.json`. Rebuild the native APK whenever native modules or
 their config-plugin options change; JavaScript-only changes need only Metro.
+
+`@orbital-systems/react-native-esp-idf-provisioning` is also autolinked and
+configured for BLE transport, allowing Metro projects to use Espressif
+Security 1 provisioning and custom endpoints such as `mqtt-config`.
 
 ## EdgeZ device setup
 

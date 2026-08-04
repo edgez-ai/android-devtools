@@ -43,6 +43,13 @@
           "modes": ["central"],
           "bluetoothAlwaysPermission": "Allow EdgeZ DevTools to connect to nearby Bluetooth devices."
         }
+      ],
+      [
+        "@orbital-systems/react-native-esp-idf-provisioning",
+        {
+          "transport": "ble",
+          "bluetoothAlwaysPermission": "Allow EdgeZ DevTools to discover and provision nearby ESP devices."
+        }
       ]
     ]
   }

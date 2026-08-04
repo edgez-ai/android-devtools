@@ -4,7 +4,7 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "postinstall": "node scripts/patch-react-native-cmake.mjs",
+    "postinstall": "node scripts/patch-react-native-cmake.mjs && node scripts/patch-expo-gradle-node.mjs",
     "start": "expo start --dev-client --host localhost --port 8081",
     "android": "expo run:android",
     "build:android": "cd android && ./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a",
@@ -12,6 +12,7 @@
     "doctor": "expo-doctor"
   },
   "dependencies": {
+    "@orbital-systems/react-native-esp-idf-provisioning": "^0.5.5",
     "expo": "~57.0.9",
     "expo-dev-client": "~57.0.7",
     "expo-status-bar": "~57.0.1",

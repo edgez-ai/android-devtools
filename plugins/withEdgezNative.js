@@ -14,6 +14,26 @@ const SETTINGS_BLOCK = `
 include ':edgez-native'
 project(':edgez-native').projectDir = new File(rootDir, '../native/edgez-android')`;
 
+const NODE_RESOLVER = `def resolveEdgezNode = {
+  def candidates = [
+    providers.gradleProperty("edgezNodeExecutable").getOrNull(),
+    System.getenv("NODE_BINARY"),
+    "/opt/homebrew/bin/node",
+    "/usr/local/bin/node",
+  ].findAll { it }
+  def nvmRoot = new File(System.getProperty("user.home"), ".nvm/versions/node")
+  if (nvmRoot.isDirectory()) {
+    def nvmVersions = nvmRoot.listFiles()
+      ?.findAll { it.isDirectory() && it.name.startsWith("v22.") }
+      ?.sort { left, right -> right.name <=> left.name }
+      ?.collect { new File(it, "bin/node").absolutePath } ?: []
+    candidates.addAll(nvmVersions)
+  }
+  candidates.find { new File(it).canExecute() } ?: "node"
+}
+def edgezNode = resolveEdgezNode()
+`;
+
 function addOnce(source, anchor, addition, description) {
   if (source.includes(addition.trim())) return source;
   const index = source.indexOf(anchor);
@@ -97,22 +117,27 @@ module.exports = function withEdgezNative(config) {
   });
 
   config = withGradleProperties(config, gradleConfig => {
-    const exists = gradleConfig.modResults.some(
-      item => item.type === 'property' && item.key === 'edgezCmakeVersion',
-    );
-    if (!exists) {
-      gradleConfig.modResults.push({
-        type: 'property',
-        key: 'edgezCmakeVersion',
-        value: '3.22.1',
-      });
+    const properties = { edgezCmakeVersion: '3.22.1' };
+    for (const [key, value] of Object.entries(properties)) {
+      const current = gradleConfig.modResults.find(
+        item => item.type === 'property' && item.key === key,
+      );
+      if (current) current.value = value;
+      else gradleConfig.modResults.push({ type: 'property', key, value });
     }
     return gradleConfig;
   });
 
   config = withSettingsGradle(config, gradleConfig => {
-    gradleConfig.modResults.contents = addOnce(
+    let contents = addOnce(
       gradleConfig.modResults.contents,
+      'pluginManagement {\n',
+      NODE_RESOLVER.split('\n').map(line => line ? `  ${line}` : line).join('\n'),
+      'the Node executable resolver',
+    );
+    contents = contents.replaceAll('commandLine("node",', 'commandLine(edgezNode,');
+    gradleConfig.modResults.contents = addOnce(
+      contents,
       "include ':app'",
       SETTINGS_BLOCK,
       'the EdgeZ native Gradle project',
@@ -123,8 +148,15 @@ module.exports = function withEdgezNative(config) {
   config = withAppBuildGradle(config, gradleConfig => {
     let contents = addOnce(
       gradleConfig.modResults.contents,
+      'apply plugin: "com.facebook.react"\n',
+      `\n${NODE_RESOLVER}\n`,
+      'the Node executable resolver',
+    );
+    contents = contents.replaceAll('["node",', '[edgezNode,');
+    contents = addOnce(
+      contents,
       'react {',
-      '\n    // EdgeZ DevTools is the built-in home, so include its JS in assembleDebug.\n    debuggableVariants = []',
+      '\n    // EdgeZ DevTools is the built-in home, so include its JS in assembleDebug.\n    debuggableVariants = []\n    nodeExecutableAndArgs = [edgezNode]',
       'embedded EdgeZ home bundling',
     );
     contents = addOnce(
