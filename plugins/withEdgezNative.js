@@ -43,12 +43,19 @@ module.exports = function withEdgezNative(config) {
   });
 
   config = withAppBuildGradle(config, gradleConfig => {
-    gradleConfig.modResults.contents = addOnce(
+    let contents = addOnce(
       gradleConfig.modResults.contents,
+      'react {',
+      '\n    // EdgeZ DevTools is the built-in home, so include its JS in assembleDebug.\n    debuggableVariants = []',
+      'embedded EdgeZ home bundling',
+    );
+    contents = addOnce(
+      contents,
       'dependencies {',
       '\n    implementation project(\':edgez-native\')',
       'the EdgeZ native dependency',
     );
+    gradleConfig.modResults.contents = contents;
     return gradleConfig;
   });
 

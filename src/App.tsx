@@ -1,4 +1,3 @@
-import { openMenu } from 'expo-dev-client';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -7,12 +6,12 @@ import {
   PermissionsAndroid,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   EdgezStatus,
@@ -199,6 +198,15 @@ export default function App() {
     [run],
   );
 
+  const openExpoProjects = useCallback(() => {
+    setStatusMessage('Opening the Expo project launcher…');
+    void requireEdgezNative().openProjectLauncher().catch(error => {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusMessage(`Error: ${message}`);
+      Alert.alert('EdgeZ DevTools', message);
+    });
+  }, []);
+
   const toggleProxy = useCallback(() => {
     const running = runningStates.has(status.proxyState);
     return run(
@@ -243,7 +251,7 @@ export default function App() {
           : 'Start proxy';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <StatusBar style="light" />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.hero}>
@@ -277,13 +285,6 @@ export default function App() {
             primary={!proxyRunning}
             disabled={busy || status.proxyState === 'stopping'}
             onPress={toggleProxy}
-          />
-          <ActionButton
-            label="Open developer menu"
-            onPress={() => {
-              setStatusMessage('Opening the Expo development-client menu.');
-              openMenu();
-            }}
           />
         </View>
 
@@ -354,6 +355,16 @@ export default function App() {
 
         <Text selectable style={styles.statusMessage}>{statusMessage}</Text>
       </ScrollView>
+      <View style={styles.appTabs}>
+        <Pressable accessibilityRole="tab" accessibilityState={{ selected: true }} style={styles.appTabSelected}>
+          <Text style={styles.appTabIcon}>⌂</Text>
+          <Text style={styles.appTabTextSelected}>Android DevTools</Text>
+        </Pressable>
+        <Pressable accessibilityRole="tab" onPress={openExpoProjects} style={styles.appTab}>
+          <Text style={styles.appTabIcon}>⚛</Text>
+          <Text style={styles.appTabText}>Expo</Text>
+        </Pressable>
+      </View>
     </SafeAreaView>
   );
 }
@@ -417,7 +428,7 @@ function ActionButton({
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.blueDark },
-  content: { padding: 16, paddingTop: 12, paddingBottom: 24, gap: 12, backgroundColor: colors.background, minHeight: '100%' },
+  content: { padding: 16, paddingTop: 12, paddingBottom: 24, gap: 12, backgroundColor: colors.background },
   hero: { padding: 16, borderRadius: 18, backgroundColor: colors.blueDark, elevation: 2 },
   heroTitle: { color: colors.surface, fontSize: 24, fontWeight: '800' },
   heroSubtitle: { color: '#E4EEFF', fontSize: 13, lineHeight: 18, marginTop: 4 },
@@ -452,4 +463,10 @@ const styles = StyleSheet.create({
   buttonTextPrimary: { color: colors.surface, fontSize: 14, fontWeight: '800' },
   buttonTextSecondary: { color: colors.blue, fontSize: 14, fontWeight: '800' },
   statusMessage: { color: colors.text, backgroundColor: colors.statusBackground, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, fontSize: 13, lineHeight: 18 },
+  appTabs: { flexDirection: 'row', minHeight: 68, paddingHorizontal: 12, paddingTop: 7, paddingBottom: 7, gap: 8, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#D9E1EF', elevation: 12 },
+  appTab: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  appTabSelected: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.blueSoft },
+  appTabIcon: { color: colors.blue, fontSize: 20, lineHeight: 22, fontWeight: '800' },
+  appTabText: { color: colors.muted, fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  appTabTextSelected: { color: colors.blue, fontSize: 12, lineHeight: 17, fontWeight: '800' },
 });

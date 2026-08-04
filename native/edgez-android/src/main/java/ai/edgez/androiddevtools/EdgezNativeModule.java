@@ -23,6 +23,7 @@ import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.UiThreadUtil;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
@@ -34,6 +35,7 @@ import org.json.JSONObject;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.lang.reflect.Method;
 
 public final class EdgezNativeModule extends ReactContextBaseJavaModule
         implements ActivityEventListener {
@@ -191,6 +193,23 @@ public final class EdgezNativeModule extends ReactContextBaseJavaModule
                 promise.reject("EDGEZ_BATTERY_SETTINGS", fallback);
             }
         }
+    }
+
+    @ReactMethod
+    public void openProjectLauncher(Promise promise) {
+        UiThreadUtil.runOnUiThread(() -> {
+            try {
+                Class<?> controllerClass = Class.forName(
+                        "expo.modules.devlauncher.DevLauncherController");
+                Method getInstance = controllerClass.getMethod("getInstance");
+                Object controller = getInstance.invoke(null);
+                Method navigateToLauncher = controllerClass.getMethod("navigateToLauncher");
+                promise.resolve(null);
+                navigateToLauncher.invoke(controller);
+            } catch (ReflectiveOperationException | RuntimeException exception) {
+                promise.reject("EDGEZ_PROJECT_LAUNCHER", exception);
+            }
+        });
     }
 
     @ReactMethod

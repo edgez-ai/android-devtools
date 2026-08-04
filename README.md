@@ -4,13 +4,15 @@ EdgeZ Android DevTools is an Expo SDK 57 React Native development client for
 connecting a physical Android device to a remote workspace through
 [`adb-sidecar`](../adb-sidecar). It combines one installable application with:
 
-- the React Native version of the original Android setup UI;
+- an embedded React Native version of the original Android setup UI as the
+  default **Android DevTools** home tab;
 - the Expo development-client runtime for loading projects from Metro;
 - `react-native-ble-plx` for Bluetooth Low Energy central/client access;
 - the existing EdgeZ libp2p, Wireless Debugging, USB/IP, and scrcpy Android
   implementation.
 
-This is a custom development client, not the store version of Expo Go. Native
+The existing Expo development-client launcher is available from the **Expo**
+tab. This is a custom development client, not the store version of Expo Go. Native
 modules such as BLE require this APK and cannot be added by installing only the
 standard Expo runtime.
 
@@ -55,7 +57,8 @@ cd android
 ./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a
 ```
 
-The single merged APK is written to:
+`assembleDebug` embeds the Android DevTools JavaScript bundle, so the Home tab
+works without Metro. The single merged APK is written to:
 
 ```text
 android/app/build/outputs/apk/debug/app-debug.apk

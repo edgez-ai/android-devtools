@@ -1,5 +1,14 @@
 import { registerRootComponent } from 'expo';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import App from './src/App';
 
-registerRootComponent(App);
+function Root() {
+  return (
+    <SafeAreaProvider>
+      <App />
+    </SafeAreaProvider>
+  );
+}
+
+registerRootComponent(Root);

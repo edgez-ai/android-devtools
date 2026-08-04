@@ -25,7 +25,15 @@
       ]
     },
     "plugins": [
-      "expo-dev-client",
+      [
+        "expo-dev-client",
+        {
+          "launchMode": "launcher",
+          "embeddedBundle": true,
+          "showMenuAtLaunch": false,
+          "skipOnboarding": true
+        }
+      ],
       "./plugins/withEdgezNative",
       [
         "react-native-ble-plx",
