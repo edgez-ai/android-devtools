@@ -61,8 +61,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          output_dir="android/app/build/outputs/apk/release"
+          mapfile -t release_apks < <(find "$output_dir" -maxdepth 1 -type f -name '*.apk' -print)
+          if [[ ${#release_apks[@]} -ne 1 ]]; then
+            echo "Expected exactly one release APK, found ${#release_apks[@]}:" >&2
+            find "$output_dir" -maxdepth 2 -type f -print >&2
+            exit 1
+          fi
+          if "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "${release_apks[0]}"; then
+            echo "The first release build unexpectedly produced a signed APK." >&2
+            exit 1
+          fi
           mkdir -p release-artifacts
-          cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
+          cp "${release_apks[0]}" \
             release-artifacts/android-devtools-release-unsigned.apk
 
       - name: Configure Android release signing
@@ -90,7 +101,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cp android/app/build/outputs/apk/release/app-release.apk \
+          output_dir="android/app/build/outputs/apk/release"
+          mapfile -t release_apks < <(find "$output_dir" -maxdepth 1 -type f -name '*.apk' -print)
+          if [[ ${#release_apks[@]} -ne 1 ]]; then
+            echo "Expected exactly one signed release APK, found ${#release_apks[@]}:" >&2
+            find "$output_dir" -maxdepth 2 -type f -print >&2
+            exit 1
+          fi
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "${release_apks[0]}"
+          cp "${release_apks[0]}" \
             release-artifacts/android-devtools-release-signed.apk
 
       - name: Verify APK signatures
