@@ -152,18 +152,6 @@ module.exports = function withEdgezNative(config) {
       `\n${NODE_RESOLVER}\n`,
       'the Node executable resolver',
     );
-    contents = addOnce(
-      contents,
-      'android {',
-      `\ndef edgezKeystoreProperties = new Properties()
-def edgezKeystorePropertiesFile = rootProject.file("key.properties")
-if (edgezKeystorePropertiesFile.exists()) {
-    edgezKeystorePropertiesFile.withInputStream { stream ->
-        edgezKeystoreProperties.load(stream)
-    }
-}\n`,
-      'the optional EdgeZ release keystore properties',
-    );
     contents = contents.replaceAll('["node",', '[edgezNode,');
     contents = addOnce(
       contents,
@@ -177,24 +165,11 @@ if (edgezKeystorePropertiesFile.exists()) {
       '\n    implementation project(\':edgez-native\')',
       'the EdgeZ native dependency',
     );
-    contents = addOnce(
-      contents,
-      'signingConfigs {',
-      `\n        release {
-            if (!edgezKeystoreProperties.isEmpty()) {
-                keyAlias edgezKeystoreProperties["keyAlias"]
-                keyPassword edgezKeystoreProperties["keyPassword"]
-                storeFile file(edgezKeystoreProperties["storeFile"])
-                storePassword edgezKeystoreProperties["storePassword"]
-            }
-        }`,
-      'the optional EdgeZ release signing configuration',
-    );
-    // Preserve the pre-Expo two-build behavior: release is unsigned until CI
-    // creates key.properties, then the same Gradle task emits app-release.apk.
+    // Expo signs release with the debug key by default. CI must receive a
+    // genuinely unsigned APK so it can preserve one copy and sign the other.
     contents = contents.replace(
       /(\n\s*release\s*\{[\s\S]*?)\n\s*signingConfig signingConfigs\.debug/,
-      '$1\n            if (!edgezKeystoreProperties.isEmpty()) {\n                signingConfig signingConfigs.release\n            }',
+      '$1\n            signingConfig null',
     );
     gradleConfig.modResults.contents = contents;
     return gradleConfig;

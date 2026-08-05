@@ -55,7 +55,11 @@ jobs:
 
       - name: Build unsigned release APK
         working-directory: android
-        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
+        run: |
+          rm -f key.properties app/upload-keystore.jks
+          ./gradlew :app:assembleRelease \
+            -PreactNativeArchitectures=arm64-v8a \
+            --no-daemon
 
       - name: Save unsigned release APK
         shell: bash
@@ -76,7 +80,7 @@ jobs:
           cp "${release_apks[0]}" \
             release-artifacts/android-devtools-release-unsigned.apk
 
-      - name: Configure Android release signing
+      - name: Restore Android release keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -85,31 +89,22 @@ jobs:
           set -euo pipefail
           : "${ANDROID_KEYSTORE_BASE64:?Missing ANDROID_KEYSTORE_BASE64 secret}"
           : "${ANDROID_KEYSTORE_PASSWORD:?Missing ANDROID_KEYSTORE_PASSWORD secret}"
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
-          printf '%s\n' \
-            "storePassword=$ANDROID_KEYSTORE_PASSWORD" \
-            "keyPassword=$ANDROID_KEYSTORE_PASSWORD" \
-            "keyAlias=edgez-android-release" \
-            "storeFile=upload-keystore.jks" \
-            > android/key.properties
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode \
+            > "$RUNNER_TEMP/android-release-keystore.jks"
 
-      - name: Build signed release APK
-        working-directory: android
-        run: ./gradlew clean :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
-
-      - name: Save signed release APK
-        shell: bash
+      - name: Sign a copy of the unsigned APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
-          output_dir="android/app/build/outputs/apk/release"
-          mapfile -t release_apks < <(find "$output_dir" -maxdepth 1 -type f -name '*.apk' -print)
-          if [[ ${#release_apks[@]} -ne 1 ]]; then
-            echo "Expected exactly one signed release APK, found ${#release_apks[@]}:" >&2
-            find "$output_dir" -maxdepth 2 -type f -print >&2
-            exit 1
-          fi
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "${release_apks[0]}"
-          cp "${release_apks[0]}" \
+          : "${ANDROID_KEYSTORE_PASSWORD:?Missing ANDROID_KEYSTORE_PASSWORD secret}"
+          cp release-artifacts/android-devtools-release-unsigned.apk \
+            release-artifacts/android-devtools-release-signed.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks "$RUNNER_TEMP/android-release-keystore.jks" \
+            --ks-key-alias edgez-android-release \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEYSTORE_PASSWORD \
             release-artifacts/android-devtools-release-signed.apk
 
       - name: Verify APK signatures

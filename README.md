@@ -102,6 +102,10 @@ repository secrets before dispatching the workflow or pushing a version tag.
 `edgez-android-release` key alias. This retains the pre-Expo release process:
 Gradle first builds without `key.properties`, then CI restores the keystore and
 properties and rebuilds the signed APK. `apksigner` verifies both results.
+The workflow also passes `-PedgezReleaseSigning=false` for phase one and
+`-PedgezReleaseSigning=true` for phase two. The release build explicitly clears
+its signing configuration unless phase two is enabled, preventing Expo or AGP
+defaults from signing the nominally unsigned artifact.
 
 ## Run a Metro project
 

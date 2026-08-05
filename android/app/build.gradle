@@ -23,14 +23,6 @@ def edgezNode = resolveEdgezNode()
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
-def edgezKeystoreProperties = new Properties()
-def edgezKeystorePropertiesFile = rootProject.file("key.properties")
-if (edgezKeystorePropertiesFile.exists()) {
-    edgezKeystorePropertiesFile.withInputStream { stream ->
-        edgezKeystoreProperties.load(stream)
-    }
-}
-
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -128,14 +120,6 @@ android {
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
     signingConfigs {
-        release {
-            if (!edgezKeystoreProperties.isEmpty()) {
-                keyAlias edgezKeystoreProperties["keyAlias"]
-                keyPassword edgezKeystoreProperties["keyPassword"]
-                storeFile file(edgezKeystoreProperties["storeFile"])
-                storePassword edgezKeystoreProperties["storePassword"]
-            }
-        }
         debug {
             storeFile file('debug.keystore')
             storePassword 'android'
@@ -150,9 +134,7 @@ android {
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
-            if (!edgezKeystoreProperties.isEmpty()) {
-                signingConfig signingConfigs.release
-            }
+            signingConfig null
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
