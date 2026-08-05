@@ -90,7 +90,8 @@ application.
 ## Build release APKs
 
 The GitHub Actions `Build Android DevTools release` workflow builds one ARM64
-release binary and publishes it in two forms:
+release binary with the customized Expo Dev Launcher tabs enabled and publishes
+it in two forms:
 
 - `android-devtools-release-unsigned.apk` for downstream signing;
 - `android-devtools-release-signed.apk` signed with the protected
@@ -99,13 +100,11 @@ release binary and publishes it in two forms:
 Configure the `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD`
 repository secrets before dispatching the workflow or pushing a version tag.
 `scripts/generate-release-secrets.sh` creates values with the expected
-`edgez-android-release` key alias. This retains the pre-Expo release process:
-Gradle first builds without `key.properties`, then CI restores the keystore and
-properties and rebuilds the signed APK. `apksigner` verifies both results.
-The workflow also passes `-PedgezReleaseSigning=false` for phase one and
-`-PedgezReleaseSigning=true` for phase two. The release build explicitly clears
-its signing configuration unless phase two is enabled, preventing Expo or AGP
-defaults from signing the nominally unsigned artifact.
+`edgez-android-release` key alias. Gradle explicitly produces an unsigned
+release APK. CI preserves that artifact, copies it, signs only the copy with
+`apksigner`, and verifies that the original remains unsigned while the copy has
+a valid release signature. Both artifacts therefore contain the same compiled
+application.
 
 ## Run a Metro project
 
