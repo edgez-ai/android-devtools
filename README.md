@@ -87,6 +87,22 @@ Open the `android` directory—not the repository root—as the project in Andro
 Studio. Select the `app` run configuration to build and install the same debug
 application.
 
+## Build release APKs
+
+The GitHub Actions `Build Android DevTools release` workflow builds one ARM64
+release binary and publishes it in two forms:
+
+- `android-devtools-release-unsigned.apk` for downstream signing;
+- `android-devtools-release-signed.apk` signed with the protected
+  EdgeZ release keystore and verified with `apksigner`.
+
+Configure the `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD`
+repository secrets before dispatching the workflow or pushing a version tag.
+`scripts/generate-release-secrets.sh` creates values with the expected
+`edgez-android-release` key alias. This retains the pre-Expo release process:
+Gradle first builds without `key.properties`, then CI restores the keystore and
+properties and rebuilds the signed APK. `apksigner` verifies both results.
+
 ## Run a Metro project
 
 Start Metro for this development client:

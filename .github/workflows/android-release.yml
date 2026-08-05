@@ -1,4 +1,4 @@
-name: Build Android development client
+name: Build Android DevTools release
 
 on:
   workflow_dispatch:
@@ -10,12 +10,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-development-client-${{ github.ref }}
+  group: android-release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Build merged ARM64 debug APK
+    name: Build signed and unsigned ARM64 release APKs
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -53,21 +53,63 @@ jobs:
       - name: Generate the Android project
         run: npx expo prebuild --clean --platform android --no-install
 
-      - name: Build the merged development client
+      - name: Build unsigned release APK
         working-directory: android
-        run: ./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a --no-daemon
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
 
-      - name: Collect the APK
+      - name: Save unsigned release APK
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p release-artifacts
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-            release-artifacts/edgez-devtools-expo-57-ble-debug.apk
+          cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
+            release-artifacts/android-devtools-release-unsigned.apk
 
-      - name: Upload build artifact
+      - name: Configure Android release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${ANDROID_KEYSTORE_BASE64:?Missing ANDROID_KEYSTORE_BASE64 secret}"
+          : "${ANDROID_KEYSTORE_PASSWORD:?Missing ANDROID_KEYSTORE_PASSWORD secret}"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+          printf '%s\n' \
+            "storePassword=$ANDROID_KEYSTORE_PASSWORD" \
+            "keyPassword=$ANDROID_KEYSTORE_PASSWORD" \
+            "keyAlias=edgez-android-release" \
+            "storeFile=upload-keystore.jks" \
+            > android/key.properties
+
+      - name: Build signed release APK
+        working-directory: android
+        run: ./gradlew clean :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
+
+      - name: Save signed release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp android/app/build/outputs/apk/release/app-release.apk \
+            release-artifacts/android-devtools-release-signed.apk
+
+      - name: Verify APK signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose \
+            release-artifacts/android-devtools-release-signed.apk
+          if "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify \
+            release-artifacts/android-devtools-release-unsigned.apk; then
+            echo "Unsigned APK unexpectedly contains a valid signature." >&2
+            exit 1
+          fi
+
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: edgez-devtools-development-client-${{ github.run_number }}
-          path: release-artifacts/edgez-devtools-expo-57-ble-debug.apk
+          name: edgez-devtools-release-${{ github.run_number }}
+          path: release-artifacts/
           if-no-files-found: error
           retention-days: 14
 
@@ -75,6 +117,8 @@ jobs:
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: release-artifacts/edgez-devtools-expo-57-ble-debug.apk
+          files: |
+            release-artifacts/android-devtools-release-unsigned.apk
+            release-artifacts/android-devtools-release-signed.apk
           fail_on_unmatched_files: true
           generate_release_notes: true
