@@ -120,9 +120,10 @@ module.exports = function withEdgezNative(config) {
     const properties = {
       edgezCmakeVersion: '3.22.1',
       // The customized Expo launcher tabs live in expo-dev-launcher's debug
-      // source set. Expo disables that source set for release unless this is
-      // explicitly enabled.
+      // source set and depend on expo-dev-menu's debug implementation. Expo
+      // disables both source sets for release unless explicitly enabled.
       'expo.devlauncher.configureInRelease': 'true',
+      'expo.devmenu.configureInRelease': 'true',
     };
     for (const [key, value] of Object.entries(properties)) {
       const current = gradleConfig.modResults.find(
