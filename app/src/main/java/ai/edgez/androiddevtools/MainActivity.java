@@ -12,6 +12,8 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
@@ -29,6 +31,7 @@ import android.widget.Button;
 import android.widget.ArrayAdapter;
 import android.widget.AdapterView;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.ScrollView;
@@ -46,6 +49,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public final class MainActivity extends Activity {
     private static final int PERMISSION_REQUEST = 10;
@@ -346,13 +351,13 @@ public final class MainActivity extends Activity {
 
     private View templateCard(JSONObject template) {
         LinearLayout card = verticalPanel(14, roundRect(color(R.color.edgez_surface), 18));
-        TextView icon = text(template.optBoolean("mobile") ? "APP"
-                : template.optBoolean("firmware") ? "IoT" : "CODE",
-                14, Color.WHITE);
-        icon.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        icon.setGravity(Gravity.CENTER);
-        icon.setBackground(roundRect(color(R.color.edgez_blue), 14));
-        card.addView(icon, new LinearLayout.LayoutParams(dp(54), dp(54)));
+        ImageView preview = new ImageView(this);
+        preview.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        preview.setBackground(roundRect(color(R.color.edgez_blue_soft), 14));
+        preview.setClipToOutline(true);
+        card.addView(preview, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(82)));
+        loadTemplateImage(preview, template.optString("imageUrl", ""));
         TextView title = text(template.optString("name", getString(R.string.template_title)),
                 16, color(R.color.edgez_text));
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -362,22 +367,38 @@ public final class MainActivity extends Activity {
         String description = template.optString("description", "").trim();
         if (!description.isEmpty()) {
             TextView copy = text(description, 12, color(R.color.edgez_text_muted));
-            copy.setMaxLines(3);
+            copy.setMaxLines(2);
             copy.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            copy.setMinHeight(dp(58));
-            card.addView(copy, margins(0, 5, 0, 9));
+            copy.setMinHeight(dp(38));
+            card.addView(copy, margins(0, 5, 0, 0));
         }
-        JSONObject baseImage = template.optJSONObject("baseImage");
-        String baseName = baseImage == null ? "" : baseImage.optString("name", "");
-        String framework = template.optString("framework", "");
-        String capabilities = templateCapabilities(template);
-        card.addView(text(getString(R.string.template_meta, baseName, framework,
-                        capabilities.isEmpty() ? getString(R.string.template_general) : capabilities),
-                11, color(R.color.edgez_blue)));
         card.setClickable(true);
         card.setFocusable(true);
         card.setOnClickListener(view -> openTemplateDetail(template));
         return card;
+    }
+
+    private void loadTemplateImage(ImageView target, String imageUrl) {
+        if (imageUrl == null || imageUrl.trim().isEmpty()) return;
+        executor.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(imageUrl).openConnection();
+                connection.setConnectTimeout(10_000);
+                connection.setReadTimeout(15_000);
+                connection.setRequestProperty("Accept", "image/*");
+                Bitmap bitmap = BitmapFactory.decodeStream(connection.getInputStream());
+                if (bitmap != null) {
+                    runOnUiThread(() -> {
+                        if (target.isAttachedToWindow()) target.setImageBitmap(bitmap);
+                    });
+                }
+            } catch (Exception ignored) {
+                // Keep the neutral preview background when an image is unavailable.
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
     }
 
     private String templateCapabilities(JSONObject template) {
