@@ -82,11 +82,13 @@ public final class MainActivity extends Activity {
     private Button proxyToggleButton;
     private EditText loginEmail;
     private LinearLayout projectContent;
+    private LinearLayout templatesContent;
     private JSONArray organizations = new JSONArray();
     private JSONArray projects = new JSONArray();
     private boolean updatingPortalSelectors;
     private boolean receiverRegistered;
     private boolean showingSettings;
+    private boolean showingTemplates;
     private int selectedStep;
 
     @Override
@@ -150,7 +152,7 @@ public final class MainActivity extends Activity {
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        if (showingSettings) {
+        if (showingSettings || showingTemplates) {
             showHomePage();
             return;
         }
@@ -161,6 +163,7 @@ public final class MainActivity extends Activity {
         dismissAccountPopup();
         dismissProjectSelectionDialog();
         showingSettings = false;
+        showingTemplates = false;
         resetViewReferences();
         setContentView(buildHomeContent());
         if (PortalStore.isSignedIn(this)) {
@@ -172,6 +175,7 @@ public final class MainActivity extends Activity {
         dismissAccountPopup();
         dismissProjectSelectionDialog();
         showingSettings = true;
+        showingTemplates = false;
         resetViewReferences();
         setContentView(buildSettingsContent());
         refreshPeerId();
@@ -179,6 +183,16 @@ public final class MainActivity extends Activity {
         refreshProxyStatus();
         refreshUsbStatus();
         refreshStepMarkers();
+    }
+
+    private void showTemplatesPage() {
+        dismissAccountPopup();
+        dismissProjectSelectionDialog();
+        showingSettings = false;
+        showingTemplates = true;
+        resetViewReferences();
+        setContentView(buildTemplatesContent());
+        loadTemplates(1);
     }
 
     private void resetViewReferences() {
@@ -193,6 +207,7 @@ public final class MainActivity extends Activity {
         statusText = null;
         loginEmail = null;
         projectContent = null;
+        templatesContent = null;
         for (int index = 0; index < stepTabButtons.length; index++) {
             stepTabButtons[index] = null;
             stepPanels[index] = null;
@@ -236,6 +251,116 @@ public final class MainActivity extends Activity {
         card.addView(actionButton(R.string.login_send_link, view -> requestMagicLink(), true),
                 margins(0, 12, 0, 0));
         return card;
+    }
+
+    private View buildTemplatesContent() {
+        LinearLayout content = pageContent();
+        content.addView(subpageHeader(R.string.templates_title), margins(0, 0, 0, 18));
+        content.addView(cardTitle(R.string.templates_title));
+        content.addView(description(R.string.templates_description), margins(0, 4, 0, 14));
+        templatesContent = new LinearLayout(this);
+        templatesContent.setOrientation(LinearLayout.VERTICAL);
+        templatesContent.addView(description(R.string.templates_loading));
+        content.addView(templatesContent);
+        statusText = statusLabel(getString(R.string.templates_loading));
+        content.addView(statusText, margins(0, 18, 0, 0));
+        return scroll(content);
+    }
+
+    private void loadTemplates(int page) {
+        runTask(getString(R.string.templates_loading), () -> {
+            JSONObject response = PortalStore.loadTemplates(this, page, 8);
+            runOnUiThread(() -> applyTemplates(response));
+        });
+    }
+
+    private void applyTemplates(JSONObject response) {
+        if (!showingTemplates || templatesContent == null) return;
+        int page = Math.max(1, response.optInt("page", 1));
+        int totalPages = Math.max(1, response.optInt("totalPages", 1));
+        int total = Math.max(0, response.optInt("total", 0));
+        JSONArray templates = response.optJSONArray("templates");
+        templatesContent.removeAllViews();
+        if (templates == null || templates.length() == 0) {
+            templatesContent.addView(description(R.string.templates_empty));
+        } else {
+            for (int index = 0; index < templates.length(); index++) {
+                JSONObject template = templates.optJSONObject(index);
+                if (template != null) {
+                    templatesContent.addView(templateCard(template), margins(0, 0, 0, 12));
+                }
+            }
+        }
+
+        LinearLayout pagination = new LinearLayout(this);
+        pagination.setOrientation(LinearLayout.HORIZONTAL);
+        pagination.setGravity(Gravity.CENTER_VERTICAL);
+        Button previous = actionButton(R.string.templates_previous,
+                view -> loadTemplates(page - 1), false);
+        previous.setEnabled(page > 1);
+        pagination.addView(previous, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView pageLabel = text(getString(R.string.templates_page, page, totalPages),
+                12, color(R.color.edgez_text_muted));
+        pageLabel.setGravity(Gravity.CENTER);
+        pagination.addView(pageLabel, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        Button next = actionButton(R.string.templates_next,
+                view -> loadTemplates(page + 1), false);
+        next.setEnabled(page < totalPages);
+        pagination.addView(next, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        templatesContent.addView(pagination, margins(0, 2, 0, 0));
+        showStatus(getString(R.string.templates_loaded, total));
+    }
+
+    private View templateCard(JSONObject template) {
+        LinearLayout card = card();
+        TextView title = text(template.optString("name", getString(R.string.template_title)),
+                17, color(R.color.edgez_text));
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        card.addView(title);
+        String description = template.optString("description", "").trim();
+        if (!description.isEmpty()) {
+            card.addView(text(description, 13, color(R.color.edgez_text_muted)),
+                    margins(0, 5, 0, 9));
+        }
+        JSONObject baseImage = template.optJSONObject("baseImage");
+        String baseName = baseImage == null ? "" : baseImage.optString("name", "");
+        String framework = template.optString("framework", "");
+        String capabilities = templateCapabilities(template);
+        card.addView(text(getString(R.string.template_meta, baseName, framework,
+                        capabilities.isEmpty() ? getString(R.string.template_general) : capabilities),
+                11, color(R.color.edgez_blue)));
+        card.setClickable(true);
+        card.setFocusable(true);
+        card.setOnClickListener(view -> showTemplateDetails(template));
+        return card;
+    }
+
+    private String templateCapabilities(JSONObject template) {
+        List<String> capabilities = new ArrayList<>();
+        if (template.optBoolean("frontend")) capabilities.add("Frontend");
+        if (template.optBoolean("backend")) capabilities.add("Backend");
+        if (template.optBoolean("mobile")) capabilities.add("Mobile");
+        if (template.optBoolean("firmware")) capabilities.add("IoT");
+        return String.join(" · ", capabilities);
+    }
+
+    private void showTemplateDetails(JSONObject template) {
+        JSONObject baseImage = template.optJSONObject("baseImage");
+        String message = template.optString("description", "").trim();
+        if (!message.isEmpty()) message += "\n\n";
+        message += getString(R.string.template_details,
+                templateCapabilities(template),
+                template.optString("framework", ""),
+                baseImage == null ? "" : baseImage.optString("name", ""),
+                template.optString("minimumWorkspaceSize", "small"));
+        new AlertDialog.Builder(this)
+                .setTitle(template.optString("name", getString(R.string.template_title)))
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
     }
 
     private Spinner portalSpinner() {
@@ -520,8 +645,10 @@ public final class MainActivity extends Activity {
         configureOrganizationSpinner(organization);
         configureProjectSpinner(project, true);
         panel.addView(scopeSelectorPanel(organization, project));
-        panel.addView(actionButton(R.string.settings_button, view -> showSettingsPage(), false),
+        panel.addView(actionButton(R.string.templates_button, view -> showTemplatesPage(), false),
                 margins(0, 12, 0, 0));
+        panel.addView(actionButton(R.string.settings_button, view -> showSettingsPage(), false),
+                margins(0, 8, 0, 0));
         panel.addView(actionButton(R.string.sign_out, view -> signOut(), false),
                 margins(0, 8, 0, 0));
         accountPopup = new PopupWindow(panel, dp(320), ViewGroup.LayoutParams.WRAP_CONTENT, true);
@@ -645,6 +772,10 @@ public final class MainActivity extends Activity {
     }
 
     private View settingsHeader() {
+        return subpageHeader(R.string.settings_title);
+    }
+
+    private View subpageHeader(int titleLabel) {
         LinearLayout hero = verticalPanel(14, gradient(
                 color(R.color.edgez_blue_dark), color(R.color.edgez_blue), 18));
         LinearLayout row = new LinearLayout(this);
@@ -652,7 +783,7 @@ public final class MainActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
         Button back = compactButton(R.string.back_to_apps, view -> showHomePage());
         row.addView(back);
-        TextView title = text(getString(R.string.settings_title), 22, Color.WHITE);
+        TextView title = text(getString(titleLabel), 22, Color.WHITE);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         title.setGravity(Gravity.END);
         row.addView(title, new LinearLayout.LayoutParams(0,

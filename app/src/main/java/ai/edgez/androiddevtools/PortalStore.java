@@ -124,6 +124,13 @@ final class PortalStore {
         return request("GET", endpoint, accessToken(context), null);
     }
 
+    static JSONObject loadTemplates(Context context, int page, int pageSize)
+            throws IOException, JSONException {
+        String endpoint = BASE_URL + "/api/mobile/templates?page=" + Math.max(1, page)
+                + "&pageSize=" + Math.max(1, pageSize);
+        return request("GET", endpoint, accessToken(context), null);
+    }
+
     private static JSONObject request(
             String method, String endpoint, String accessToken, JSONObject body)
             throws IOException, JSONException {
