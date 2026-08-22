@@ -72,18 +72,15 @@ public final class MainActivity extends Activity {
     private View usbStateDot;
     private Button proxyToggleButton;
     private boolean receiverRegistered;
+    private boolean showingSettings;
     private int selectedStep;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(buildContent());
+        showHomePage();
         reconcileProxyStatus();
-        refreshPeerId();
-        refreshPermissionStatus();
         refreshProxyStatus();
-        refreshUsbStatus();
-        requestRuntimePermissions();
     }
 
     @Override
@@ -111,7 +108,8 @@ public final class MainActivity extends Activity {
         refreshUsbStatus();
         refreshStepMarkers();
         boolean promptRequested = consumeWirelessDebugPrompt();
-        maybeShowWirelessDebugDialog(promptRequested || !isWirelessDebugEnabled());
+        maybeShowWirelessDebugDialog(promptRequested
+                || (showingSettings && !isWirelessDebugEnabled()));
     }
 
     @Override
@@ -131,22 +129,180 @@ public final class MainActivity extends Activity {
         super.onDestroy();
     }
 
-    private View buildContent() {
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onBackPressed() {
+        if (showingSettings) {
+            showHomePage();
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    private void showHomePage() {
+        showingSettings = false;
+        resetViewReferences();
+        setContentView(buildHomeContent());
+    }
+
+    private void showSettingsPage() {
+        showingSettings = true;
+        resetViewReferences();
+        setContentView(buildSettingsContent());
+        refreshPeerId();
+        refreshPermissionStatus();
+        refreshProxyStatus();
+        refreshUsbStatus();
+        refreshStepMarkers();
+    }
+
+    private void resetViewReferences() {
+        peerIdText = null;
+        permissionStatusText = null;
+        proxyStateText = null;
+        proxyDetailText = null;
+        usbStatusText = null;
+        proxyStateDot = null;
+        usbStateDot = null;
+        proxyToggleButton = null;
+        statusText = null;
+        for (int index = 0; index < stepTabButtons.length; index++) {
+            stepTabButtons[index] = null;
+            stepPanels[index] = null;
+        }
+    }
+
+    private View buildHomeContent() {
+        LinearLayout content = pageContent();
+        content.addView(homeHeader(), margins(0, 0, 0, 22));
+
+        TextView sectionTitle = cardTitle(R.string.apps_title);
+        content.addView(sectionTitle);
+        content.addView(description(R.string.apps_description), margins(0, 4, 0, 14));
+
+        LinearLayout firstRow = new LinearLayout(this);
+        firstRow.setOrientation(LinearLayout.HORIZONTAL);
+        firstRow.addView(appTile("MAP", R.string.demo_app_title,
+                R.string.demo_app_description, R.string.app_badge_embedded,
+                view -> openEmbeddedDemo()), gridTileMargins(0, 6));
+        firstRow.addView(appTile("8081", R.string.metro_app_title,
+                R.string.metro_app_description, R.string.app_badge_remote,
+                view -> openExpoProject()), gridTileMargins(6, 0));
+        content.addView(firstRow);
+
+        LinearLayout secondRow = new LinearLayout(this);
+        secondRow.setOrientation(LinearLayout.HORIZONTAL);
+        secondRow.addView(appTile("EXPO", R.string.expo_projects_title,
+                R.string.expo_projects_description, R.string.app_badge_projects,
+                view -> openExpoLauncher()), gridTileMargins(0, 6));
+        View spacer = new View(this);
+        secondRow.addView(spacer, gridTileMargins(6, 0));
+        content.addView(secondRow, margins(0, 12, 0, 0));
+
+        statusText = text(getString(R.string.home_status_ready), 13, color(R.color.edgez_text));
+        statusText.setTextIsSelectable(true);
+        statusText.setPadding(dp(14), dp(13), dp(14), dp(13));
+        statusText.setBackground(roundRect(color(R.color.edgez_status_background), 14));
+        content.addView(statusText, margins(0, 22, 0, 0));
+        return scroll(content);
+    }
+
+    private View buildSettingsContent() {
+        LinearLayout content = pageContent();
+        content.addView(settingsHeader(), margins(0, 0, 0, 10));
+
+        LinearLayout connection = connectionCard();
+        content.addView(connection, margins(0, 0, 0, 12));
+
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+        stepTabButtons[0] = stepTab(0, R.string.step_tab_permissions);
+        stepTabButtons[1] = stepTab(1, R.string.step_tab_join);
+        stepTabButtons[2] = stepTab(2, R.string.step_tab_pair);
+        tabs.addView(stepTabButtons[0], weightedButtonMargins(0, 4));
+        tabs.addView(stepTabButtons[1], weightedButtonMargins(4, 4));
+        tabs.addView(stepTabButtons[2], weightedButtonMargins(4, 0));
+        content.addView(tabs, margins(0, 0, 0, 10));
+
+        LinearLayout permissions = card();
+        permissions.addView(stepTitle("1", R.string.permissions_title));
+        permissions.addView(description(R.string.permissions_description));
+        permissionStatusText = text("", 13, color(R.color.edgez_text_muted));
+        permissions.addView(permissionStatusText, margins(0, 12, 0, 4));
+        permissions.addView(actionButton(R.string.grant_permissions,
+                view -> requestRequiredPermissions(), false));
+        stepPanels[0] = permissions;
+        content.addView(permissions, margins(0, 0, 0, 12));
+
+        LinearLayout join = card();
+        join.addView(stepTitle("2", R.string.join_title));
+        join.addView(description(R.string.join_description));
+        join.addView(actionButton(R.string.scan_qr_join, view -> scanPairingQr(), true));
+        stepPanels[1] = join;
+        content.addView(join, margins(0, 0, 0, 12));
+
+        LinearLayout wireless = card();
+        wireless.addView(stepTitle("3", R.string.wireless_title));
+        wireless.addView(description(R.string.wireless_description));
+        wireless.addView(actionButton(R.string.pair_notification,
+                view -> beginNotificationPairing(), false));
+        stepPanels[2] = wireless;
+        content.addView(wireless, margins(0, 0, 0, 12));
+
+        statusText = text(getString(R.string.status_ready), 13, color(R.color.edgez_text));
+        statusText.setTextIsSelectable(true);
+        statusText.setPadding(dp(14), dp(13), dp(14), dp(13));
+        statusText.setBackground(roundRect(color(R.color.edgez_status_background), 14));
+        content.addView(statusText);
+        showStep(selectedStep);
+        return scroll(content);
+    }
+
+    private LinearLayout pageContent() {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(16), dp(12), dp(16), dp(24));
         content.setBackgroundColor(color(R.color.edgez_background));
+        return content;
+    }
 
+    private View homeHeader() {
         LinearLayout hero = verticalPanel(16, gradient(
                 color(R.color.edgez_blue_dark), color(R.color.edgez_blue), 18));
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = text(getString(R.string.hero_title), 24, Color.WHITE);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        hero.addView(title);
-        TextView subtitle = text(getString(R.string.hero_subtitle), 13, 0xFFE4EEFF);
+        row.addView(title, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        Button settings = compactButton(R.string.settings_button, view -> showSettingsPage());
+        row.addView(settings);
+        hero.addView(row);
+        TextView subtitle = text(getString(R.string.apps_hero_subtitle), 13, 0xFFE4EEFF);
         subtitle.setLineSpacing(0, 1.05f);
         hero.addView(subtitle, margins(0, 4, 0, 0));
-        content.addView(hero, margins(0, 0, 0, 10));
+        return hero;
+    }
 
+    private View settingsHeader() {
+        LinearLayout hero = verticalPanel(14, gradient(
+                color(R.color.edgez_blue_dark), color(R.color.edgez_blue), 18));
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        Button back = compactButton(R.string.back_to_apps, view -> showHomePage());
+        row.addView(back);
+        TextView title = text(getString(R.string.settings_title), 22, Color.WHITE);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setGravity(Gravity.END);
+        row.addView(title, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        hero.addView(row);
+        return hero;
+    }
+
+    private LinearLayout connectionCard() {
         LinearLayout connection = card();
         connection.addView(cardTitle(R.string.connection_status));
         peerIdText = text(getString(R.string.peer_not_joined), 13, color(R.color.edgez_text_muted));
@@ -190,56 +346,86 @@ public final class MainActivity extends Activity {
         connection.addView(actionButton(
                 R.string.open_expo_project, view -> openExpoProject(), false),
                 margins(0, 8, 0, 0));
-        content.addView(connection, margins(0, 0, 0, 12));
+        return connection;
+    }
 
-        LinearLayout tabs = new LinearLayout(this);
-        tabs.setOrientation(LinearLayout.HORIZONTAL);
-        stepTabButtons[0] = stepTab(0, R.string.step_tab_permissions);
-        stepTabButtons[1] = stepTab(1, R.string.step_tab_join);
-        stepTabButtons[2] = stepTab(2, R.string.step_tab_pair);
-        tabs.addView(stepTabButtons[0], weightedButtonMargins(0, 4));
-        tabs.addView(stepTabButtons[1], weightedButtonMargins(4, 4));
-        tabs.addView(stepTabButtons[2], weightedButtonMargins(4, 0));
-        content.addView(tabs, margins(0, 0, 0, 10));
-
-        LinearLayout permissions = card();
-        permissions.addView(stepTitle("1", R.string.permissions_title));
-        permissions.addView(description(R.string.permissions_description));
-        permissionStatusText = text("", 13, color(R.color.edgez_text_muted));
-        permissions.addView(permissionStatusText, margins(0, 12, 0, 4));
-        permissions.addView(actionButton(R.string.grant_permissions,
-                view -> requestRequiredPermissions(), false));
-        stepPanels[0] = permissions;
-        content.addView(permissions, margins(0, 0, 0, 12));
-
-        LinearLayout join = card();
-        join.addView(stepTitle("2", R.string.join_title));
-        join.addView(description(R.string.join_description));
-        join.addView(actionButton(R.string.scan_qr_join, view -> scanPairingQr(), true));
-        stepPanels[1] = join;
-        content.addView(join, margins(0, 0, 0, 12));
-
-        LinearLayout wireless = card();
-        wireless.addView(stepTitle("3", R.string.wireless_title));
-        wireless.addView(description(R.string.wireless_description));
-        wireless.addView(actionButton(R.string.pair_notification,
-                view -> beginNotificationPairing(), false));
-        stepPanels[2] = wireless;
-        content.addView(wireless, margins(0, 0, 0, 12));
-
-        showStep(0);
-        refreshStepMarkers();
-
-        statusText = text(getString(R.string.status_ready), 13, color(R.color.edgez_text));
-        statusText.setTextIsSelectable(true);
-        statusText.setPadding(dp(14), dp(13), dp(14), dp(13));
-        statusText.setBackground(roundRect(color(R.color.edgez_status_background), 14));
-        content.addView(statusText);
-
+    private ScrollView scroll(View content) {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.addView(content);
         return scroll;
+    }
+
+    private View appTile(String icon, int titleLabel, int descriptionLabel, int badgeLabel,
+            View.OnClickListener listener) {
+        LinearLayout tile = verticalPanel(14, roundRect(color(R.color.edgez_surface), 18));
+        tile.setClickable(true);
+        tile.setFocusable(true);
+        tile.setOnClickListener(listener);
+        TextView iconView = text(icon, icon.length() > 3 ? 13 : 18, Color.WHITE);
+        iconView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        iconView.setGravity(Gravity.CENTER);
+        iconView.setBackground(roundRect(color(R.color.edgez_blue), 14));
+        tile.addView(iconView, new LinearLayout.LayoutParams(dp(54), dp(54)));
+        TextView title = text(getString(titleLabel), 16, color(R.color.edgez_text));
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        tile.addView(title, margins(0, 12, 0, 0));
+        TextView description = text(getString(descriptionLabel), 12,
+                color(R.color.edgez_text_muted));
+        description.setMinHeight(dp(54));
+        tile.addView(description, margins(0, 5, 0, 8));
+        TextView badge = text(getString(badgeLabel), 11, color(R.color.edgez_blue));
+        badge.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        tile.addView(badge);
+        return tile;
+    }
+
+    private Button compactButton(int label, View.OnClickListener listener) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTextSize(12);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setTextColor(Color.WHITE);
+        button.setBackgroundTintList(ColorStateList.valueOf(0x33FFFFFF));
+        button.setMinHeight(dp(40));
+        button.setMinWidth(0);
+        button.setPadding(dp(12), 0, dp(12), 0);
+        button.setOnClickListener(listener);
+        return button;
+    }
+
+    private LinearLayout.LayoutParams gridTileMargins(int left, int right) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        params.setMargins(dp(left), 0, dp(right), 0);
+        return params;
+    }
+
+    private void openEmbeddedDemo() {
+        try {
+            Intent intent = new Intent()
+                    .setClassName(getPackageName(),
+                            "ai.edgez.androiddevtools.runtime.EmbeddedBundleActivity")
+                    .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            startActivity(intent);
+            showStatus(getString(R.string.status_opening_demo));
+        } catch (ActivityNotFoundException exception) {
+            showStatus(getString(R.string.status_expo_unavailable));
+        }
+    }
+
+    private void openExpoLauncher() {
+        try {
+            Class<?> launcher = Class.forName(
+                    "expo.modules.devlauncher.launcher.DevLauncherActivity");
+            startActivity(new Intent(this, launcher)
+                    .putExtra("edgez.rootTab", "home")
+                    .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+            showStatus(getString(R.string.status_opening_projects));
+        } catch (ReflectiveOperationException | RuntimeException exception) {
+            showStatus(getString(R.string.status_expo_unavailable));
+        }
     }
 
     private void openExpoProject() {
@@ -443,6 +629,9 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshPeerId() {
+        if (peerIdText == null) {
+            return;
+        }
         String peerId = ConfigStore.peerId(this);
         peerIdText.setText(peerId.isEmpty()
                 ? getString(R.string.peer_not_joined) : getString(R.string.peer_id_format, peerId));

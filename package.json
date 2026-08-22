@@ -8,6 +8,7 @@
     "start": "expo start --dev-client --host localhost --port 8081",
     "android": "expo run:android",
     "build:android": "cd android && ./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a",
+    "bundle:demo": "NODE_ENV=production expo export:embed --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/edgez-offgrid-map.android.bundle --assets-dest android/app/src/main/res",
     "prebuild": "expo prebuild --platform android",
     "doctor": "expo-doctor"
   },
