@@ -13,6 +13,7 @@ import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
@@ -25,14 +26,20 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ArrayAdapter;
+import android.widget.AdapterView;
+import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.PopupWindow;
 import android.widget.ScrollView;
+import android.widget.Spinner;
 import android.widget.TextView;
 
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
 
 import org.json.JSONException;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -60,6 +67,8 @@ public final class MainActivity extends Activity {
         }
     };
     private AlertDialog wirelessDebugDialog;
+    private AlertDialog projectSelectionDialog;
+    private PopupWindow accountPopup;
     private final Button[] stepTabButtons = new Button[3];
     private final View[] stepPanels = new View[3];
     private TextView peerIdText;
@@ -71,6 +80,11 @@ public final class MainActivity extends Activity {
     private View proxyStateDot;
     private View usbStateDot;
     private Button proxyToggleButton;
+    private EditText loginEmail;
+    private LinearLayout projectContent;
+    private JSONArray organizations = new JSONArray();
+    private JSONArray projects = new JSONArray();
+    private boolean updatingPortalSelectors;
     private boolean receiverRegistered;
     private boolean showingSettings;
     private int selectedStep;
@@ -79,6 +93,7 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         showHomePage();
+        handleAuthIntent(getIntent());
         reconcileProxyStatus();
         refreshProxyStatus();
     }
@@ -116,6 +131,7 @@ public final class MainActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        handleAuthIntent(intent);
         maybeShowWirelessDebugDialog(consumeWirelessDebugPrompt());
     }
 
@@ -125,6 +141,8 @@ public final class MainActivity extends Activity {
             wirelessDebugDialog.dismiss();
             wirelessDebugDialog = null;
         }
+        dismissAccountPopup();
+        dismissProjectSelectionDialog();
         executor.shutdownNow();
         super.onDestroy();
     }
@@ -140,12 +158,19 @@ public final class MainActivity extends Activity {
     }
 
     private void showHomePage() {
+        dismissAccountPopup();
+        dismissProjectSelectionDialog();
         showingSettings = false;
         resetViewReferences();
         setContentView(buildHomeContent());
+        if (PortalStore.isSignedIn(this)) {
+            loadPortalHome(PortalStore.organizationId(this));
+        }
     }
 
     private void showSettingsPage() {
+        dismissAccountPopup();
+        dismissProjectSelectionDialog();
         showingSettings = true;
         resetViewReferences();
         setContentView(buildSettingsContent());
@@ -166,6 +191,8 @@ public final class MainActivity extends Activity {
         usbStateDot = null;
         proxyToggleButton = null;
         statusText = null;
+        loginEmail = null;
+        projectContent = null;
         for (int index = 0; index < stepTabButtons.length; index++) {
             stepTabButtons[index] = null;
             stepPanels[index] = null;
@@ -175,6 +202,56 @@ public final class MainActivity extends Activity {
     private View buildHomeContent() {
         LinearLayout content = pageContent();
         content.addView(homeHeader(), margins(0, 0, 0, 22));
+
+        if (!PortalStore.isSignedIn(this)) {
+            content.addView(loginCard());
+            statusText = statusLabel(getString(R.string.login_status_signed_out));
+            content.addView(statusText, margins(0, 16, 0, 0));
+            return scroll(content);
+        }
+
+        projectContent = new LinearLayout(this);
+        projectContent.setOrientation(LinearLayout.VERTICAL);
+        projectContent.addView(description(R.string.portal_loading));
+        content.addView(projectContent);
+
+        statusText = statusLabel(getString(R.string.portal_loading));
+        content.addView(statusText, margins(0, 22, 0, 0));
+        return scroll(content);
+    }
+
+    private View loginCard() {
+        LinearLayout card = card();
+        card.addView(cardTitle(R.string.login_title));
+        card.addView(description(R.string.login_description), margins(0, 5, 0, 12));
+        loginEmail = new EditText(this);
+        loginEmail.setHint(R.string.login_email_hint);
+        loginEmail.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        loginEmail.setSingleLine(true);
+        loginEmail.setTextSize(15);
+        loginEmail.setPadding(dp(12), dp(10), dp(12), dp(10));
+        loginEmail.setBackground(roundRect(color(R.color.edgez_blue_soft), 12));
+        card.addView(loginEmail);
+        card.addView(actionButton(R.string.login_send_link, view -> requestMagicLink(), true),
+                margins(0, 12, 0, 0));
+        return card;
+    }
+
+    private Spinner portalSpinner() {
+        Spinner spinner = new Spinner(this);
+        spinner.setBackground(roundRect(color(R.color.edgez_blue_soft), 12));
+        spinner.setPadding(dp(8), dp(4), dp(8), dp(4));
+        spinner.setMinimumHeight(dp(48));
+        return spinner;
+    }
+
+    private void addProjectApps(LinearLayout content, JSONObject project) {
+        TextView projectTitle = text(project.optString("name", getString(R.string.project_label)),
+                21, color(R.color.edgez_text));
+        projectTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        content.addView(projectTitle);
+        content.addView(description(R.string.project_content_description), margins(0, 3, 0, 14));
 
         TextView sectionTitle = cardTitle(R.string.apps_title);
         content.addView(sectionTitle);
@@ -199,12 +276,292 @@ public final class MainActivity extends Activity {
         secondRow.addView(spacer, gridTileMargins(6, 0));
         content.addView(secondRow, margins(0, 12, 0, 0));
 
-        statusText = text(getString(R.string.home_status_ready), 13, color(R.color.edgez_text));
-        statusText.setTextIsSelectable(true);
-        statusText.setPadding(dp(14), dp(13), dp(14), dp(13));
-        statusText.setBackground(roundRect(color(R.color.edgez_status_background), 14));
-        content.addView(statusText, margins(0, 22, 0, 0));
-        return scroll(content);
+        JSONArray workspaces = project.optJSONArray("workspaces");
+        content.addView(cardTitle(R.string.workspaces_title), margins(0, 22, 0, 4));
+        if (workspaces == null || workspaces.length() == 0) {
+            content.addView(description(R.string.no_workspaces));
+            return;
+        }
+        for (int index = 0; index < workspaces.length(); index++) {
+            JSONObject workspace = workspaces.optJSONObject(index);
+            if (workspace != null) {
+                content.addView(workspaceCard(workspace), margins(0, 8, 0, 0));
+            }
+        }
+    }
+
+    private View workspaceCard(JSONObject workspace) {
+        LinearLayout card = card();
+        TextView title = text(workspace.optString("name", getString(R.string.workspace_title)),
+                16, color(R.color.edgez_text));
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        card.addView(title);
+        String state = workspace.optString("desiredState", "stopped");
+        String repository = workspace.optString("githubRepositoryFullName", "");
+        card.addView(text(state + (repository.isEmpty() ? "" : " · " + repository),
+                12, color(R.color.edgez_text_muted)), margins(0, 4, 0, 0));
+        return card;
+    }
+
+    private TextView statusLabel(String value) {
+        TextView status = text(value, 13, color(R.color.edgez_text));
+        status.setTextIsSelectable(true);
+        status.setPadding(dp(14), dp(13), dp(14), dp(13));
+        status.setBackground(roundRect(color(R.color.edgez_status_background), 14));
+        return status;
+    }
+
+    private void requestMagicLink() {
+        String email = loginEmail == null ? "" : loginEmail.getText().toString().trim();
+        if (email.isEmpty() || !email.contains("@")) {
+            showStatus(getString(R.string.login_invalid_email));
+            return;
+        }
+        runTask(getString(R.string.login_sending), () -> {
+            PortalStore.requestMagicLink(email);
+            showStatusFromWorker(getString(R.string.login_check_email));
+        });
+    }
+
+    private void handleAuthIntent(Intent intent) {
+        Uri data = intent == null ? null : intent.getData();
+        if (data == null || !"edgez-devtools".equals(data.getScheme())
+                || !"auth-callback".equals(data.getHost())) {
+            return;
+        }
+        intent.setData(null);
+        String error = data.getQueryParameter("error");
+        String code = data.getQueryParameter("code");
+        if (error != null && !error.isEmpty()) {
+            showStatus(getString(R.string.login_failed, error));
+            return;
+        }
+        if (code == null || code.isEmpty()) {
+            showStatus(getString(R.string.login_failed, "missing login code"));
+            return;
+        }
+        runTask(getString(R.string.login_finishing), () -> {
+            PortalStore.exchangeCode(this, code);
+            runOnUiThread(this::showHomePage);
+        });
+    }
+
+    private void loadPortalHome(String organizationId) {
+        runTask(getString(R.string.portal_loading), () -> {
+            JSONObject response = PortalStore.loadHome(this, organizationId);
+            runOnUiThread(() -> applyPortalHome(response));
+        });
+    }
+
+    private void applyPortalHome(JSONObject response) {
+        organizations = response.optJSONArray("organizations");
+        projects = response.optJSONArray("projects");
+        if (organizations == null) organizations = new JSONArray();
+        if (projects == null) projects = new JSONArray();
+        String selectedOrganizationId = response.optString("selectedOrganizationId", "");
+        if (!selectedOrganizationId.isEmpty()) {
+            PortalStore.setOrganizationId(this, selectedOrganizationId);
+        }
+        if (projectContent == null) return;
+        if (projects.length() == 0) {
+            projectContent.removeAllViews();
+            projectContent.addView(description(R.string.no_projects));
+            PortalStore.setProjectId(this, "");
+            showStatus(getString(R.string.no_projects));
+        } else {
+            int selected = projectIndex(PortalStore.projectId(this));
+            if (selected >= 0) {
+                renderSelectedProject(selected);
+                showStatus(getString(R.string.home_status_ready));
+            } else {
+                PortalStore.setProjectId(this, "");
+                projectContent.removeAllViews();
+                projectContent.addView(description(R.string.choose_project_prompt));
+                showStatus(getString(R.string.choose_project_prompt));
+                projectContent.post(() -> showProjectSelectionDialog(true));
+            }
+        }
+    }
+
+    private int projectIndex(String projectId) {
+        for (int index = 0; index < projects.length(); index++) {
+            JSONObject project = projects.optJSONObject(index);
+            if (project != null && projectId.equals(project.optString("id", ""))) return index;
+        }
+        return -1;
+    }
+
+    private int organizationIndex(String organizationId) {
+        for (int index = 0; index < organizations.length(); index++) {
+            JSONObject organization = organizations.optJSONObject(index);
+            if (organization != null
+                    && organizationId.equals(organization.optString("id", ""))) return index;
+        }
+        return 0;
+    }
+
+    private List<String> organizationLabels() {
+        List<String> labels = new ArrayList<>();
+        for (int index = 0; index < organizations.length(); index++) {
+            JSONObject organization = organizations.optJSONObject(index);
+            if (organization != null) labels.add(organization.optString(
+                    "name", organization.optString("id", "Organization")));
+        }
+        return labels;
+    }
+
+    private List<String> projectLabels() {
+        List<String> labels = new ArrayList<>();
+        for (int index = 0; index < projects.length(); index++) {
+            JSONObject project = projects.optJSONObject(index);
+            if (project != null) labels.add(project.optString(
+                    "name", project.optString("id", "Project")));
+        }
+        return labels;
+    }
+
+    private void configureOrganizationSpinner(Spinner spinner) {
+        updatingPortalSelectors = true;
+        List<String> labels = organizationLabels();
+        spinner.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, labels));
+        if (!labels.isEmpty()) spinner.setSelection(
+                organizationIndex(PortalStore.organizationId(this)), false);
+        updatingPortalSelectors = false;
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (updatingPortalSelectors) return;
+                JSONObject organization = organizations.optJSONObject(position);
+                if (organization == null) return;
+                String nextId = organization.optString("id", "");
+                if (!nextId.isEmpty() && !nextId.equals(PortalStore.organizationId(MainActivity.this))) {
+                    dismissAccountPopup();
+                    dismissProjectSelectionDialog();
+                    PortalStore.setOrganizationId(MainActivity.this, nextId);
+                    if (projectContent != null) {
+                        projectContent.removeAllViews();
+                        projectContent.addView(description(R.string.portal_loading));
+                    }
+                    loadPortalHome(nextId);
+                }
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
+    }
+
+    private void configureProjectSpinner(Spinner spinner, boolean switchOnSelection) {
+        updatingPortalSelectors = true;
+        List<String> labels = projectLabels();
+        spinner.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, labels));
+        int selected = projectIndex(PortalStore.projectId(this));
+        if (!labels.isEmpty()) spinner.setSelection(Math.max(0, selected), false);
+        updatingPortalSelectors = false;
+        if (!switchOnSelection) return;
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (updatingPortalSelectors) return;
+                JSONObject project = projects.optJSONObject(position);
+                if (project == null || project.optString("id", "")
+                        .equals(PortalStore.projectId(MainActivity.this))) return;
+                renderSelectedProject(position);
+                dismissAccountPopup();
+                showStatus(getString(R.string.home_status_ready));
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
+    }
+
+    private LinearLayout scopeSelectorPanel(Spinner organization, Spinner project) {
+        LinearLayout panel = verticalPanel(16, roundRect(color(R.color.edgez_surface), 18));
+        panel.addView(text(getString(R.string.organization_label), 12,
+                color(R.color.edgez_text_muted)));
+        panel.addView(organization, margins(0, 3, 0, 12));
+        panel.addView(text(getString(R.string.project_label), 12,
+                color(R.color.edgez_text_muted)));
+        panel.addView(project, margins(0, 3, 0, 0));
+        return panel;
+    }
+
+    private void showProjectSelectionDialog(boolean required) {
+        if (showingSettings || projects.length() == 0 || isFinishing() || isDestroyed()
+                || (projectSelectionDialog != null && projectSelectionDialog.isShowing())) return;
+        Spinner organization = portalSpinner();
+        Spinner project = portalSpinner();
+        configureOrganizationSpinner(organization);
+        configureProjectSpinner(project, false);
+        projectSelectionDialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.choose_project_title)
+                .setMessage(R.string.choose_project_description)
+                .setView(scopeSelectorPanel(organization, project))
+                .setPositiveButton(R.string.open_project, (dialog, which) -> {
+                    renderSelectedProject(project.getSelectedItemPosition());
+                    showStatus(getString(R.string.home_status_ready));
+                })
+                .setOnDismissListener(dialog -> projectSelectionDialog = null)
+                .create();
+        projectSelectionDialog.setCanceledOnTouchOutside(!required);
+        projectSelectionDialog.setCancelable(!required);
+        projectSelectionDialog.show();
+    }
+
+    private void dismissProjectSelectionDialog() {
+        if (projectSelectionDialog != null) {
+            projectSelectionDialog.dismiss();
+            projectSelectionDialog = null;
+        }
+    }
+
+    private void showAccountDropdown(View anchor) {
+        dismissAccountPopup();
+        JSONObject user = PortalStore.user(this);
+        LinearLayout panel = verticalPanel(16, roundRect(color(R.color.edgez_surface), 18));
+        String name = user.optString("name", "").trim();
+        TextView title = text(name.isEmpty() ? getString(R.string.account_title) : name,
+                17, color(R.color.edgez_text));
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        panel.addView(title);
+        panel.addView(text(user.optString("email", ""), 12,
+                color(R.color.edgez_text_muted)), margins(0, 2, 0, 12));
+        Spinner organization = portalSpinner();
+        Spinner project = portalSpinner();
+        configureOrganizationSpinner(organization);
+        configureProjectSpinner(project, true);
+        panel.addView(scopeSelectorPanel(organization, project));
+        panel.addView(actionButton(R.string.settings_button, view -> showSettingsPage(), false),
+                margins(0, 12, 0, 0));
+        panel.addView(actionButton(R.string.sign_out, view -> signOut(), false),
+                margins(0, 8, 0, 0));
+        accountPopup = new PopupWindow(panel, dp(320), ViewGroup.LayoutParams.WRAP_CONTENT, true);
+        accountPopup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        accountPopup.setOutsideTouchable(true);
+        accountPopup.setElevation(dp(10));
+        accountPopup.setOnDismissListener(() -> accountPopup = null);
+        accountPopup.showAsDropDown(anchor, anchor.getWidth() - dp(320), dp(4));
+    }
+
+    private void dismissAccountPopup() {
+        if (accountPopup != null) {
+            accountPopup.dismiss();
+            accountPopup = null;
+        }
+    }
+
+    private void renderSelectedProject(int position) {
+        JSONObject project = projects.optJSONObject(position);
+        if (project == null || projectContent == null) return;
+        PortalStore.setProjectId(this, project.optString("id", ""));
+        projectContent.removeAllViews();
+        addProjectApps(projectContent, project);
+    }
+
+    private void signOut() {
+        dismissAccountPopup();
+        dismissProjectSelectionDialog();
+        PortalStore.signOut(this);
+        organizations = new JSONArray();
+        projects = new JSONArray();
+        showHomePage();
     }
 
     private View buildSettingsContent() {
@@ -276,8 +633,17 @@ public final class MainActivity extends Activity {
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         row.addView(title, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        Button settings = compactButton(R.string.settings_button, view -> showSettingsPage());
-        row.addView(settings);
+        if (PortalStore.isSignedIn(this)) {
+            JSONObject user = PortalStore.user(this);
+            String name = user.optString("name", "").trim();
+            Button account = compactButton(R.string.account_title, view -> { });
+            account.setText((name.isEmpty() ? getString(R.string.account_title) : name) + " ▾");
+            account.setOnClickListener(this::showAccountDropdown);
+            row.addView(account);
+        } else {
+            Button settings = compactButton(R.string.settings_button, view -> showSettingsPage());
+            row.addView(settings);
+        }
         hero.addView(row);
         TextView subtitle = text(getString(R.string.apps_hero_subtitle), 13, 0xFFE4EEFF);
         subtitle.setLineSpacing(0, 1.05f);
@@ -392,6 +758,13 @@ public final class MainActivity extends Activity {
         button.setMinWidth(0);
         button.setPadding(dp(12), 0, dp(12), 0);
         button.setOnClickListener(listener);
+        return button;
+    }
+
+    private Button compactLightButton(int label, View.OnClickListener listener) {
+        Button button = compactButton(label, listener);
+        button.setTextColor(color(R.color.edgez_blue));
+        button.setBackgroundTintList(ColorStateList.valueOf(color(R.color.edgez_blue_soft)));
         return button;
     }
 

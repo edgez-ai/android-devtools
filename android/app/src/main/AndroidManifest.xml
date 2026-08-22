@@ -51,6 +51,12 @@
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="edgez-devtools" android:host="auth-callback"/>
+      </intent-filter>
     </activity>
     <activity android:name="expo.modules.devlauncher.launcher.DevLauncherActivity" android:process=":expo" android:taskAffinity="${applicationId}.expo" android:excludeFromRecents="true"/>
     <activity android:name="expo.modules.devlauncher.compose.AuthActivity" android:process=":expo" android:taskAffinity="${applicationId}.expo" android:excludeFromRecents="true"/>

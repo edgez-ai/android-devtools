@@ -119,9 +119,30 @@ module.exports = function withEdgezNative(config) {
           'tools:replace': 'android:exported',
         },
       );
+      const nativeHomeFilters = nativeHomeActivity['intent-filter'] || [];
+      const hasAuthCallback = nativeHomeFilters.some(filter =>
+        (filter.data || []).some(data =>
+          data.$['android:scheme'] === 'edgez-devtools' &&
+          data.$['android:host'] === 'auth-callback',
+        ),
+      );
+      const authCallbackFilter = {
+          action: [{ $: { 'android:name': 'android.intent.action.VIEW' } }],
+          category: [
+            { $: { 'android:name': 'android.intent.category.DEFAULT' } },
+            { $: { 'android:name': 'android.intent.category.BROWSABLE' } },
+          ],
+          data: [{
+            $: {
+              'android:scheme': 'edgez-devtools',
+              'android:host': 'auth-callback',
+            },
+          }],
+        };
       nativeHomeActivity['intent-filter'] = [
-        ...(nativeHomeActivity['intent-filter'] || []),
+        ...nativeHomeFilters,
         ...launcherFilters,
+        ...(hasAuthCallback ? [] : [authCallbackFilter]),
       ];
     }
     upsertActivity('expo.modules.devlauncher.launcher.DevLauncherActivity', expoTask);
