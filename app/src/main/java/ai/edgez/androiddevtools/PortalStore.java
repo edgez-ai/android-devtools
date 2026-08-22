@@ -24,6 +24,7 @@ final class PortalStore {
     private static final String KEY_USER = "user";
     private static final String KEY_ORGANIZATION = "organization_id";
     private static final String KEY_PROJECT = "project_id";
+    private static final String KEY_PROJECT_ORGANIZATION = "project_organization_id";
 
     private PortalStore() {
     }
@@ -53,16 +54,37 @@ final class PortalStore {
         SharedPreferences.Editor editor = current.edit().putString(KEY_ORGANIZATION, organizationId);
         if (!organizationId.equals(current.getString(KEY_ORGANIZATION, ""))) {
             editor.remove(KEY_PROJECT);
+            editor.remove(KEY_PROJECT_ORGANIZATION);
         }
-        editor.apply();
+        editor.commit();
     }
 
     static String projectId(Context context) {
-        return preferences(context).getString(KEY_PROJECT, "");
+        SharedPreferences current = preferences(context);
+        String projectId = current.getString(KEY_PROJECT, "");
+        String projectOrganizationId = current.getString(KEY_PROJECT_ORGANIZATION, "");
+        String organizationId = current.getString(KEY_ORGANIZATION, "");
+        if (!projectOrganizationId.isEmpty() && !projectOrganizationId.equals(organizationId)) {
+            return "";
+        }
+        return projectId;
     }
 
     static void setProjectId(Context context, String projectId) {
-        preferences(context).edit().putString(KEY_PROJECT, projectId).apply();
+        SharedPreferences current = preferences(context);
+        current.edit()
+                .putString(KEY_PROJECT, projectId)
+                .putString(KEY_PROJECT_ORGANIZATION,
+                        current.getString(KEY_ORGANIZATION, ""))
+                .commit();
+    }
+
+    static void setSelection(Context context, String organizationId, String projectId) {
+        preferences(context).edit()
+                .putString(KEY_ORGANIZATION, organizationId)
+                .putString(KEY_PROJECT, projectId)
+                .putString(KEY_PROJECT_ORGANIZATION, organizationId)
+                .commit();
     }
 
     static void signOut(Context context) {

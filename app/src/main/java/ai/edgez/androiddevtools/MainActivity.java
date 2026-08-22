@@ -247,12 +247,6 @@ public final class MainActivity extends Activity {
     }
 
     private void addProjectApps(LinearLayout content, JSONObject project) {
-        TextView projectTitle = text(project.optString("name", getString(R.string.project_label)),
-                21, color(R.color.edgez_text));
-        projectTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        content.addView(projectTitle);
-        content.addView(description(R.string.project_content_description), margins(0, 3, 0, 14));
-
         TextView sectionTitle = cardTitle(R.string.apps_title);
         content.addView(sectionTitle);
         content.addView(description(R.string.apps_description), margins(0, 4, 0, 14));
@@ -277,15 +271,13 @@ public final class MainActivity extends Activity {
         content.addView(secondRow, margins(0, 12, 0, 0));
 
         JSONArray workspaces = project.optJSONArray("workspaces");
-        content.addView(cardTitle(R.string.workspaces_title), margins(0, 22, 0, 4));
         if (workspaces == null || workspaces.length() == 0) {
-            content.addView(description(R.string.no_workspaces));
             return;
         }
         for (int index = 0; index < workspaces.length(); index++) {
             JSONObject workspace = workspaces.optJSONObject(index);
             if (workspace != null) {
-                content.addView(workspaceCard(workspace), margins(0, 8, 0, 0));
+                content.addView(workspaceCard(workspace), margins(0, 12, 0, 0));
             }
         }
     }
@@ -550,7 +542,8 @@ public final class MainActivity extends Activity {
     private void renderSelectedProject(int position) {
         JSONObject project = projects.optJSONObject(position);
         if (project == null || projectContent == null) return;
-        PortalStore.setProjectId(this, project.optString("id", ""));
+        PortalStore.setSelection(this, PortalStore.organizationId(this),
+                project.optString("id", ""));
         projectContent.removeAllViews();
         addProjectApps(projectContent, project);
     }

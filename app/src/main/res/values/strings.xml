@@ -33,7 +33,7 @@
     <string name="settings_button">⚙ Settings</string>
     <string name="settings_title">Settings</string>
     <string name="back_to_apps">‹ Apps</string>
-    <string name="apps_title">Apps</string>
+    <string name="apps_title">Workspaces</string>
     <string name="apps_description">Each app opens in the isolated Expo runtime while retaining access to native modules compiled into EdgeZ DevTools.</string>
     <string name="demo_app_title">Off-grid map</string>
     <string name="demo_app_description">Embedded Organic Maps demo with EdgeZ node markers and offline map downloads.</string>
