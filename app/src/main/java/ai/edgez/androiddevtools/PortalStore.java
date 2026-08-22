@@ -139,6 +139,17 @@ final class PortalStore {
         return request("GET", endpoint, accessToken(context), null);
     }
 
+    static JSONObject createProject(
+            Context context, String organizationId, String name, int serverId)
+            throws IOException, JSONException {
+        JSONObject body = new JSONObject();
+        body.put("organizationId", organizationId);
+        body.put("name", name);
+        body.put("serverId", serverId);
+        return request("POST", BASE_URL + "/api/mobile/projects",
+                accessToken(context), body);
+    }
+
     static JSONObject deployTemplate(
             Context context,
             String organizationId,

@@ -73,7 +73,10 @@ public final class MainActivity extends Activity {
     };
     private AlertDialog wirelessDebugDialog;
     private AlertDialog projectSelectionDialog;
+    private AlertDialog projectCreationDialog;
     private PopupWindow accountPopup;
+    private final Button[] homeTabButtons = new Button[2];
+    private final View[] homeTabPanels = new View[2];
     private final Button[] stepTabButtons = new Button[3];
     private final View[] stepPanels = new View[3];
     private TextView peerIdText;
@@ -86,20 +89,27 @@ public final class MainActivity extends Activity {
     private View usbStateDot;
     private Button proxyToggleButton;
     private EditText loginEmail;
+    private Button loginSubmitButton;
+    private TextView loginCheckEmailText;
     private LinearLayout projectContent;
     private LinearLayout templatesContent;
     private LinearLayout templateDetailContent;
     private EditText workspaceNameInput;
     private Spinner workspaceSizeSpinner;
+    private Spinner templateProjectSpinner;
+    private Button templateDeployButton;
     private JSONObject selectedTemplate;
     private JSONArray allowedWorkspaceSizes = new JSONArray();
     private int templatesPage = 1;
     private JSONArray organizations = new JSONArray();
     private JSONArray projects = new JSONArray();
+    private JSONArray servers = new JSONArray();
     private boolean updatingPortalSelectors;
+    private boolean loginSubmitting;
     private boolean receiverRegistered;
     private boolean showingSettings;
     private boolean showingTemplates;
+    private int selectedHomeTab;
     private int selectedStep;
 
     @Override
@@ -156,6 +166,7 @@ public final class MainActivity extends Activity {
         }
         dismissAccountPopup();
         dismissProjectSelectionDialog();
+        dismissProjectCreationDialog();
         executor.shutdownNow();
         super.onDestroy();
     }
@@ -177,6 +188,7 @@ public final class MainActivity extends Activity {
     private void showHomePage() {
         dismissAccountPopup();
         dismissProjectSelectionDialog();
+        dismissProjectCreationDialog();
         showingSettings = false;
         showingTemplates = false;
         selectedTemplate = null;
@@ -190,6 +202,7 @@ public final class MainActivity extends Activity {
     private void showSettingsPage() {
         dismissAccountPopup();
         dismissProjectSelectionDialog();
+        dismissProjectCreationDialog();
         showingSettings = true;
         showingTemplates = false;
         resetViewReferences();
@@ -228,11 +241,19 @@ public final class MainActivity extends Activity {
         proxyToggleButton = null;
         statusText = null;
         loginEmail = null;
+        loginSubmitButton = null;
+        loginCheckEmailText = null;
         projectContent = null;
         templatesContent = null;
         templateDetailContent = null;
         workspaceNameInput = null;
         workspaceSizeSpinner = null;
+        templateProjectSpinner = null;
+        templateDeployButton = null;
+        for (int index = 0; index < homeTabButtons.length; index++) {
+            homeTabButtons[index] = null;
+            homeTabPanels[index] = null;
+        }
         for (int index = 0; index < stepTabButtons.length; index++) {
             stepTabButtons[index] = null;
             stepPanels[index] = null;
@@ -273,8 +294,14 @@ public final class MainActivity extends Activity {
         loginEmail.setPadding(dp(12), dp(10), dp(12), dp(10));
         loginEmail.setBackground(roundRect(color(R.color.edgez_blue_soft), 12));
         card.addView(loginEmail);
-        card.addView(actionButton(R.string.login_send_link, view -> requestMagicLink(), true),
+        loginSubmitButton = actionButton(
+                R.string.login_send_link, view -> requestMagicLink(), true);
+        card.addView(loginSubmitButton,
                 margins(0, 12, 0, 0));
+        loginCheckEmailText = statusLabel(getString(R.string.login_check_email));
+        loginCheckEmailText.setVisibility(View.GONE);
+        card.addView(loginCheckEmailText, margins(0, 12, 0, 0));
+        setLoginSubmitting(loginSubmitting);
         return card;
     }
 
@@ -486,10 +513,18 @@ public final class MainActivity extends Activity {
         workspaceSizeSpinner.setAdapter(new ArrayAdapter<>(this,
                 android.R.layout.simple_spinner_dropdown_item, sizes));
         deploy.addView(workspaceSizeSpinner, margins(0, 10, 0, 0));
-        Button deployButton = actionButton(R.string.template_deploy_button,
+
+        deploy.addView(text(getString(R.string.template_project_label), 12,
+                color(R.color.edgez_text_muted)), margins(0, 14, 0, 0));
+        templateProjectSpinner = portalSpinner();
+        configureTemplateProjectSpinner();
+        deploy.addView(templateProjectSpinner, margins(0, 3, 0, 0));
+        deploy.addView(actionButton(R.string.create_project_button,
+                view -> showCreateProjectDialog(), false), margins(0, 8, 0, 0));
+        templateDeployButton = actionButton(R.string.template_deploy_button,
                 view -> confirmTemplateDeployment(), true);
-        deployButton.setEnabled(!sizes.isEmpty());
-        deploy.addView(deployButton, margins(0, 12, 0, 0));
+        templateDeployButton.setEnabled(!sizes.isEmpty() && projects.length() > 0);
+        deploy.addView(templateDeployButton, margins(0, 12, 0, 0));
         templateDetailContent.addView(deploy);
         showStatus(getString(R.string.template_detail_ready));
     }
@@ -502,14 +537,17 @@ public final class MainActivity extends Activity {
     }
 
     private void confirmTemplateDeployment() {
-        if (selectedTemplate == null || workspaceNameInput == null || workspaceSizeSpinner == null) {
+        if (selectedTemplate == null || workspaceNameInput == null
+                || workspaceSizeSpinner == null || templateProjectSpinner == null) {
             return;
         }
-        String projectId = PortalStore.projectId(this);
-        if (projectId.isEmpty()) {
-            showStatus(getString(R.string.choose_project_prompt));
+        int projectPosition = templateProjectSpinner.getSelectedItemPosition();
+        JSONObject project = projects.optJSONObject(projectPosition);
+        if (project == null) {
+            showCreateProjectDialog();
             return;
         }
+        PortalStore.setProjectId(this, project.optString("id", ""));
         String message = selectedTemplate.optBoolean("mobileWorkspace")
                 ? getString(R.string.template_deploy_confirm_mobile)
                 : getString(R.string.template_deploy_confirm);
@@ -552,7 +590,45 @@ public final class MainActivity extends Activity {
         return spinner;
     }
 
-    private void addProjectApps(LinearLayout content, JSONObject project) {
+    private void configureTemplateProjectSpinner() {
+        if (templateProjectSpinner == null) return;
+        templateProjectSpinner.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, projectLabels()));
+        int selected = projectIndex(PortalStore.projectId(this));
+        if (projects.length() > 0) {
+            templateProjectSpinner.setSelection(selected >= 0 ? selected : 0, false);
+        }
+        if (templateDeployButton != null) {
+            templateDeployButton.setEnabled(projects.length() > 0
+                    && allowedWorkspaceSizes.length() > 0);
+        }
+    }
+
+    private void addProjectTabs(LinearLayout content, JSONObject project) {
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+        homeTabButtons[0] = homeTab(0, R.string.apps_title);
+        homeTabButtons[1] = homeTab(1, R.string.workspaces_title);
+        tabs.addView(homeTabButtons[0], weightedButtonMargins(0, 4));
+        tabs.addView(homeTabButtons[1], weightedButtonMargins(4, 0));
+        content.addView(tabs, margins(0, 0, 0, 14));
+
+        LinearLayout apps = new LinearLayout(this);
+        apps.setOrientation(LinearLayout.VERTICAL);
+        addProjectApps(apps);
+        homeTabPanels[0] = apps;
+        content.addView(apps);
+
+        LinearLayout workspaces = new LinearLayout(this);
+        workspaces.setOrientation(LinearLayout.VERTICAL);
+        addProjectWorkspaces(workspaces, project);
+        homeTabPanels[1] = workspaces;
+        content.addView(workspaces);
+
+        showHomeTab(selectedHomeTab);
+    }
+
+    private void addProjectApps(LinearLayout content) {
         TextView sectionTitle = cardTitle(R.string.apps_title);
         content.addView(sectionTitle);
         content.addView(description(R.string.apps_description), margins(0, 4, 0, 14));
@@ -575,9 +651,16 @@ public final class MainActivity extends Activity {
         View spacer = new View(this);
         secondRow.addView(spacer, gridTileMargins(6, 0));
         content.addView(secondRow, margins(0, 12, 0, 0));
+    }
 
+    private void addProjectWorkspaces(LinearLayout content, JSONObject project) {
+        content.addView(cardTitle(R.string.workspaces_title));
+        content.addView(description(R.string.workspaces_description), margins(0, 4, 0, 14));
+        content.addView(actionButton(R.string.create_project_button,
+                view -> showCreateProjectDialog(), false), margins(0, 0, 0, 8));
         JSONArray workspaces = project.optJSONArray("workspaces");
         if (workspaces == null || workspaces.length() == 0) {
+            content.addView(description(R.string.no_workspaces));
             return;
         }
         for (int index = 0; index < workspaces.length(); index++) {
@@ -610,15 +693,59 @@ public final class MainActivity extends Activity {
     }
 
     private void requestMagicLink() {
+        if (loginSubmitting) {
+            return;
+        }
         String email = loginEmail == null ? "" : loginEmail.getText().toString().trim();
         if (email.isEmpty() || !email.contains("@")) {
             showStatus(getString(R.string.login_invalid_email));
             return;
         }
-        runTask(getString(R.string.login_sending), () -> {
-            PortalStore.requestMagicLink(email);
-            showStatusFromWorker(getString(R.string.login_check_email));
+        setLoginSubmitting(true);
+        showStatus(getString(R.string.login_sending));
+        executor.execute(() -> {
+            try {
+                PortalStore.requestMagicLink(email);
+                runOnUiThread(() -> {
+                    loginSubmitting = false;
+                    showLoginCheckEmail();
+                    showStatus(getString(R.string.login_check_email));
+                });
+            } catch (Throwable throwable) {
+                runOnUiThread(() -> {
+                    setLoginSubmitting(false);
+                    showStatus(getString(R.string.login_failed, safeMessage(throwable)));
+                });
+            }
         });
+    }
+
+    private void setLoginSubmitting(boolean submitting) {
+        loginSubmitting = submitting;
+        if (loginEmail != null) {
+            loginEmail.setEnabled(!submitting);
+            loginEmail.setAlpha(submitting ? 0.55f : 1f);
+        }
+        if (loginSubmitButton != null) {
+            loginSubmitButton.setEnabled(!submitting);
+            loginSubmitButton.setClickable(!submitting);
+            loginSubmitButton.setAlpha(submitting ? 0.55f : 1f);
+            loginSubmitButton.setText(submitting
+                    ? R.string.login_sending : R.string.login_send_link);
+        }
+    }
+
+    private void showLoginCheckEmail() {
+        if (loginEmail != null) {
+            loginEmail.clearFocus();
+            loginEmail.setVisibility(View.GONE);
+        }
+        if (loginSubmitButton != null) {
+            loginSubmitButton.setVisibility(View.GONE);
+        }
+        if (loginCheckEmailText != null) {
+            loginCheckEmailText.setVisibility(View.VISIBLE);
+        }
     }
 
     private void handleAuthIntent(Intent intent) {
@@ -654,8 +781,10 @@ public final class MainActivity extends Activity {
     private void applyPortalHome(JSONObject response) {
         organizations = response.optJSONArray("organizations");
         projects = response.optJSONArray("projects");
+        servers = response.optJSONArray("servers");
         if (organizations == null) organizations = new JSONArray();
         if (projects == null) projects = new JSONArray();
+        if (servers == null) servers = new JSONArray();
         String selectedOrganizationId = response.optString("selectedOrganizationId", "");
         if (!selectedOrganizationId.isEmpty()) {
             PortalStore.setOrganizationId(this, selectedOrganizationId);
@@ -664,6 +793,8 @@ public final class MainActivity extends Activity {
         if (projects.length() == 0) {
             projectContent.removeAllViews();
             projectContent.addView(description(R.string.no_projects));
+            projectContent.addView(actionButton(R.string.create_project_button,
+                    view -> showCreateProjectDialog(), true));
             PortalStore.setProjectId(this, "");
             showStatus(getString(R.string.no_projects));
         } else {
@@ -714,6 +845,16 @@ public final class MainActivity extends Activity {
             JSONObject project = projects.optJSONObject(index);
             if (project != null) labels.add(project.optString(
                     "name", project.optString("id", "Project")));
+        }
+        return labels;
+    }
+
+    private List<String> serverLabels() {
+        List<String> labels = new ArrayList<>();
+        for (int index = 0; index < servers.length(); index++) {
+            JSONObject server = servers.optJSONObject(index);
+            if (server != null) labels.add(server.optString(
+                    "name", getString(R.string.project_relay_fallback, index + 1)));
         }
         return labels;
     }
@@ -810,6 +951,85 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void showCreateProjectDialog() {
+        dismissAccountPopup();
+        if (servers.length() == 0) {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.create_project_title)
+                    .setMessage(R.string.create_project_no_relays)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show();
+            return;
+        }
+        if (isFinishing() || isDestroyed()
+                || (projectCreationDialog != null && projectCreationDialog.isShowing())) return;
+
+        LinearLayout panel = verticalPanel(16, roundRect(color(R.color.edgez_surface), 18));
+        panel.addView(text(getString(R.string.project_name_label), 12,
+                color(R.color.edgez_text_muted)));
+        EditText name = new EditText(this);
+        name.setSingleLine(true);
+        name.setHint(R.string.project_name_hint);
+        name.setPadding(dp(12), dp(10), dp(12), dp(10));
+        name.setBackground(roundRect(color(R.color.edgez_blue_soft), 12));
+        panel.addView(name, margins(0, 3, 0, 12));
+        panel.addView(text(getString(R.string.project_relay_label), 12,
+                color(R.color.edgez_text_muted)));
+        Spinner relay = portalSpinner();
+        relay.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, serverLabels()));
+        panel.addView(relay, margins(0, 3, 0, 0));
+
+        projectCreationDialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.create_project_title)
+                .setMessage(R.string.create_project_description)
+                .setView(panel)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.create_project_button, (dialog, which) -> {
+                    String projectName = normalizeProjectName(name.getText().toString());
+                    JSONObject server = servers.optJSONObject(relay.getSelectedItemPosition());
+                    if (projectName.length() < 5 || server == null) {
+                        showStatus(getString(R.string.create_project_invalid));
+                        return;
+                    }
+                    createProject(projectName, server.optInt("id", -1));
+                })
+                .setOnDismissListener(dialog -> projectCreationDialog = null)
+                .create();
+        projectCreationDialog.show();
+    }
+
+    private String normalizeProjectName(String value) {
+        return value.trim().toLowerCase().replaceAll("[^a-z0-9-]+", "-")
+                .replaceAll("^-+|-+$", "");
+    }
+
+    private void createProject(String name, int serverId) {
+        if (serverId < 0) {
+            showStatus(getString(R.string.create_project_invalid));
+            return;
+        }
+        runTask(getString(R.string.create_project_creating), () -> {
+            JSONObject project = PortalStore.createProject(this,
+                    PortalStore.organizationId(this), name, serverId);
+            runOnUiThread(() -> {
+                projects.put(project);
+                PortalStore.setProjectId(this, project.optString("id", ""));
+                if (projectContent != null) renderSelectedProject(projects.length() - 1);
+                configureTemplateProjectSpinner();
+                showStatus(getString(R.string.create_project_success,
+                        project.optString("name", name)));
+            });
+        });
+    }
+
+    private void dismissProjectCreationDialog() {
+        if (projectCreationDialog != null) {
+            projectCreationDialog.dismiss();
+            projectCreationDialog = null;
+        }
+    }
+
     private void showAccountDropdown(View anchor) {
         dismissAccountPopup();
         JSONObject user = PortalStore.user(this);
@@ -826,8 +1046,10 @@ public final class MainActivity extends Activity {
         configureOrganizationSpinner(organization);
         configureProjectSpinner(project, true);
         panel.addView(scopeSelectorPanel(organization, project));
+        panel.addView(actionButton(R.string.create_project_button,
+                view -> showCreateProjectDialog(), false), margins(0, 12, 0, 0));
         panel.addView(actionButton(R.string.templates_button, view -> showTemplatesPage(), false),
-                margins(0, 12, 0, 0));
+                margins(0, 8, 0, 0));
         panel.addView(actionButton(R.string.settings_button, view -> showSettingsPage(), false),
                 margins(0, 8, 0, 0));
         panel.addView(actionButton(R.string.sign_out, view -> signOut(), false),
@@ -853,7 +1075,7 @@ public final class MainActivity extends Activity {
         PortalStore.setSelection(this, PortalStore.organizationId(this),
                 project.optString("id", ""));
         projectContent.removeAllViews();
-        addProjectApps(projectContent, project);
+        addProjectTabs(projectContent, project);
     }
 
     private void signOut() {
@@ -862,6 +1084,7 @@ public final class MainActivity extends Activity {
         PortalStore.signOut(this);
         organizations = new JSONArray();
         projects = new JSONArray();
+        servers = new JSONArray();
         showHomePage();
     }
 
@@ -1614,6 +1837,35 @@ public final class MainActivity extends Activity {
         TextView title = cardTitle(label);
         row.addView(title, margins(12, 0, 0, 0));
         return row;
+    }
+
+    private Button homeTab(int index, int label) {
+        Button button = new Button(this);
+        button.setAllCaps(false);
+        button.setText(label);
+        button.setTextSize(14);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setMinHeight(dp(48));
+        button.setPadding(dp(8), dp(6), dp(8), dp(6));
+        button.setOnClickListener(view -> showHomeTab(index));
+        return button;
+    }
+
+    private void showHomeTab(int index) {
+        if (index < 0 || index >= homeTabPanels.length) return;
+        selectedHomeTab = index;
+        for (int current = 0; current < homeTabPanels.length; current++) {
+            View panel = homeTabPanels[current];
+            if (panel != null) panel.setVisibility(current == index ? View.VISIBLE : View.GONE);
+            Button tab = homeTabButtons[current];
+            if (tab != null) {
+                boolean selected = current == index;
+                tab.setTextColor(selected ? Color.WHITE : color(R.color.edgez_blue));
+                tab.setBackgroundTintList(ColorStateList.valueOf(selected
+                        ? color(R.color.edgez_blue) : color(R.color.edgez_blue_soft)));
+            }
+        }
     }
 
     private Button stepTab(int index, int label) {
