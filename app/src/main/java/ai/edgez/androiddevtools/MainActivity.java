@@ -83,6 +83,12 @@ public final class MainActivity extends Activity {
     private EditText loginEmail;
     private LinearLayout projectContent;
     private LinearLayout templatesContent;
+    private LinearLayout templateDetailContent;
+    private EditText workspaceNameInput;
+    private Spinner workspaceSizeSpinner;
+    private JSONObject selectedTemplate;
+    private JSONArray allowedWorkspaceSizes = new JSONArray();
+    private int templatesPage = 1;
     private JSONArray organizations = new JSONArray();
     private JSONArray projects = new JSONArray();
     private boolean updatingPortalSelectors;
@@ -152,6 +158,10 @@ public final class MainActivity extends Activity {
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
+        if (showingTemplates && selectedTemplate != null) {
+            showTemplatesPage(templatesPage);
+            return;
+        }
         if (showingSettings || showingTemplates) {
             showHomePage();
             return;
@@ -164,6 +174,7 @@ public final class MainActivity extends Activity {
         dismissProjectSelectionDialog();
         showingSettings = false;
         showingTemplates = false;
+        selectedTemplate = null;
         resetViewReferences();
         setContentView(buildHomeContent());
         if (PortalStore.isSignedIn(this)) {
@@ -186,13 +197,19 @@ public final class MainActivity extends Activity {
     }
 
     private void showTemplatesPage() {
+        showTemplatesPage(1);
+    }
+
+    private void showTemplatesPage(int page) {
         dismissAccountPopup();
         dismissProjectSelectionDialog();
         showingSettings = false;
         showingTemplates = true;
+        selectedTemplate = null;
+        templatesPage = Math.max(1, page);
         resetViewReferences();
         setContentView(buildTemplatesContent());
-        loadTemplates(1);
+        loadTemplates(templatesPage);
     }
 
     private void resetViewReferences() {
@@ -208,6 +225,9 @@ public final class MainActivity extends Activity {
         loginEmail = null;
         projectContent = null;
         templatesContent = null;
+        templateDetailContent = null;
+        workspaceNameInput = null;
+        workspaceSizeSpinner = null;
         for (int index = 0; index < stepTabButtons.length; index++) {
             stepTabButtons[index] = null;
             stepPanels[index] = null;
@@ -277,6 +297,7 @@ public final class MainActivity extends Activity {
     private void applyTemplates(JSONObject response) {
         if (!showingTemplates || templatesContent == null) return;
         int page = Math.max(1, response.optInt("page", 1));
+        templatesPage = page;
         int totalPages = Math.max(1, response.optInt("totalPages", 1));
         int total = Math.max(0, response.optInt("total", 0));
         JSONArray templates = response.optJSONArray("templates");
@@ -284,11 +305,20 @@ public final class MainActivity extends Activity {
         if (templates == null || templates.length() == 0) {
             templatesContent.addView(description(R.string.templates_empty));
         } else {
-            for (int index = 0; index < templates.length(); index++) {
-                JSONObject template = templates.optJSONObject(index);
-                if (template != null) {
-                    templatesContent.addView(templateCard(template), margins(0, 0, 0, 12));
+            for (int index = 0; index < templates.length(); index += 2) {
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                JSONObject left = templates.optJSONObject(index);
+                JSONObject right = templates.optJSONObject(index + 1);
+                if (left != null) {
+                    row.addView(templateCard(left), gridTileMargins(0, 6));
                 }
+                if (right != null) {
+                    row.addView(templateCard(right), gridTileMargins(6, 0));
+                } else {
+                    row.addView(new View(this), gridTileMargins(6, 0));
+                }
+                templatesContent.addView(row, margins(0, 0, 0, 12));
             }
         }
 
@@ -315,15 +345,27 @@ public final class MainActivity extends Activity {
     }
 
     private View templateCard(JSONObject template) {
-        LinearLayout card = card();
+        LinearLayout card = verticalPanel(14, roundRect(color(R.color.edgez_surface), 18));
+        TextView icon = text(template.optBoolean("mobile") ? "APP"
+                : template.optBoolean("firmware") ? "IoT" : "CODE",
+                14, Color.WHITE);
+        icon.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(roundRect(color(R.color.edgez_blue), 14));
+        card.addView(icon, new LinearLayout.LayoutParams(dp(54), dp(54)));
         TextView title = text(template.optString("name", getString(R.string.template_title)),
-                17, color(R.color.edgez_text));
+                16, color(R.color.edgez_text));
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        card.addView(title);
+        title.setMaxLines(2);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        card.addView(title, margins(0, 12, 0, 0));
         String description = template.optString("description", "").trim();
         if (!description.isEmpty()) {
-            card.addView(text(description, 13, color(R.color.edgez_text_muted)),
-                    margins(0, 5, 0, 9));
+            TextView copy = text(description, 12, color(R.color.edgez_text_muted));
+            copy.setMaxLines(3);
+            copy.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            copy.setMinHeight(dp(58));
+            card.addView(copy, margins(0, 5, 0, 9));
         }
         JSONObject baseImage = template.optJSONObject("baseImage");
         String baseName = baseImage == null ? "" : baseImage.optString("name", "");
@@ -334,7 +376,7 @@ public final class MainActivity extends Activity {
                 11, color(R.color.edgez_blue)));
         card.setClickable(true);
         card.setFocusable(true);
-        card.setOnClickListener(view -> showTemplateDetails(template));
+        card.setOnClickListener(view -> openTemplateDetail(template));
         return card;
     }
 
@@ -347,20 +389,138 @@ public final class MainActivity extends Activity {
         return String.join(" · ", capabilities);
     }
 
-    private void showTemplateDetails(JSONObject template) {
+    private void openTemplateDetail(JSONObject template) {
+        selectedTemplate = template;
+        resetViewReferences();
+        setContentView(buildTemplateDetailContent(template));
+        runTask(getString(R.string.template_detail_loading), () -> {
+            JSONObject response = PortalStore.loadTemplate(this,
+                    template.optString("id", ""), PortalStore.organizationId(this));
+            runOnUiThread(() -> applyTemplateDetail(response));
+        });
+    }
+
+    private View buildTemplateDetailContent(JSONObject template) {
+        LinearLayout content = pageContent();
+        content.addView(subpageHeader(R.string.template_detail_title,
+                view -> showTemplatesPage(templatesPage)), margins(0, 0, 0, 18));
+        templateDetailContent = new LinearLayout(this);
+        templateDetailContent.setOrientation(LinearLayout.VERTICAL);
+        TextView initialTitle = text(template.optString(
+                "name", getString(R.string.template_title)), 20, color(R.color.edgez_text));
+        initialTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        templateDetailContent.addView(initialTitle);
+        templateDetailContent.addView(description(R.string.template_detail_loading),
+                margins(0, 6, 0, 0));
+        content.addView(templateDetailContent);
+        statusText = statusLabel(getString(R.string.template_detail_loading));
+        content.addView(statusText, margins(0, 18, 0, 0));
+        return scroll(content);
+    }
+
+    private void applyTemplateDetail(JSONObject response) {
+        if (!showingTemplates || templateDetailContent == null) return;
+        JSONObject template = response.optJSONObject("template");
+        if (template == null) return;
+        selectedTemplate = template;
+        allowedWorkspaceSizes = response.optJSONArray("allowedWorkspaceSizes");
+        if (allowedWorkspaceSizes == null) allowedWorkspaceSizes = new JSONArray();
+        templateDetailContent.removeAllViews();
+
+        TextView title = text(template.optString("name", getString(R.string.template_title)),
+                24, color(R.color.edgez_text));
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        templateDetailContent.addView(title);
+        String copy = template.optString("description", "").trim();
+        if (!copy.isEmpty()) {
+            templateDetailContent.addView(text(copy, 14, color(R.color.edgez_text_muted)),
+                    margins(0, 8, 0, 14));
+        }
         JSONObject baseImage = template.optJSONObject("baseImage");
-        String message = template.optString("description", "").trim();
-        if (!message.isEmpty()) message += "\n\n";
-        message += getString(R.string.template_details,
-                templateCapabilities(template),
-                template.optString("framework", ""),
-                baseImage == null ? "" : baseImage.optString("name", ""),
-                template.optString("minimumWorkspaceSize", "small"));
+        templateDetailContent.addView(text(getString(R.string.template_details,
+                        templateCapabilities(template), template.optString("framework", ""),
+                        baseImage == null ? "" : baseImage.optString("name", ""),
+                        template.optString("minimumWorkspaceSize", "small")),
+                13, color(R.color.edgez_text)), margins(0, 0, 0, 18));
+
+        LinearLayout deploy = card();
+        deploy.addView(cardTitle(R.string.template_deploy_title));
+        deploy.addView(description(template.optBoolean("mobileWorkspace")
+                ? R.string.template_deploy_mobile_description
+                : R.string.template_deploy_description), margins(0, 5, 0, 12));
+        workspaceNameInput = new EditText(this);
+        workspaceNameInput.setSingleLine(true);
+        workspaceNameInput.setHint(R.string.template_workspace_name);
+        workspaceNameInput.setText(defaultWorkspaceName(template));
+        workspaceNameInput.setPadding(dp(12), dp(10), dp(12), dp(10));
+        workspaceNameInput.setBackground(roundRect(color(R.color.edgez_blue_soft), 12));
+        deploy.addView(workspaceNameInput);
+
+        workspaceSizeSpinner = portalSpinner();
+        List<String> sizes = new ArrayList<>();
+        for (int index = 0; index < allowedWorkspaceSizes.length(); index++) {
+            String size = allowedWorkspaceSizes.optString(index, "");
+            if (!size.isEmpty()) sizes.add(size);
+        }
+        workspaceSizeSpinner.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, sizes));
+        deploy.addView(workspaceSizeSpinner, margins(0, 10, 0, 0));
+        Button deployButton = actionButton(R.string.template_deploy_button,
+                view -> confirmTemplateDeployment(), true);
+        deployButton.setEnabled(!sizes.isEmpty());
+        deploy.addView(deployButton, margins(0, 12, 0, 0));
+        templateDetailContent.addView(deploy);
+        showStatus(getString(R.string.template_detail_ready));
+    }
+
+    private String defaultWorkspaceName(JSONObject template) {
+        String slug = template.optString("slug", template.optString("name", "workspace"))
+                .toLowerCase().replaceAll("[^a-z0-9-]+", "-")
+                .replaceAll("^-+|-+$", "");
+        return slug.isEmpty() ? "workspace" : slug;
+    }
+
+    private void confirmTemplateDeployment() {
+        if (selectedTemplate == null || workspaceNameInput == null || workspaceSizeSpinner == null) {
+            return;
+        }
+        String projectId = PortalStore.projectId(this);
+        if (projectId.isEmpty()) {
+            showStatus(getString(R.string.choose_project_prompt));
+            return;
+        }
+        String message = selectedTemplate.optBoolean("mobileWorkspace")
+                ? getString(R.string.template_deploy_confirm_mobile)
+                : getString(R.string.template_deploy_confirm);
         new AlertDialog.Builder(this)
-                .setTitle(template.optString("name", getString(R.string.template_title)))
+                .setTitle(R.string.template_deploy_title)
                 .setMessage(message)
-                .setPositiveButton(android.R.string.ok, null)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.template_deploy_button,
+                        (dialog, which) -> deploySelectedTemplate())
                 .show();
+    }
+
+    private void deploySelectedTemplate() {
+        String name = workspaceNameInput == null ? "" : workspaceNameInput.getText().toString().trim();
+        String size = workspaceSizeSpinner == null || workspaceSizeSpinner.getSelectedItem() == null
+                ? "" : workspaceSizeSpinner.getSelectedItem().toString();
+        if (name.isEmpty() || size.isEmpty() || selectedTemplate == null) {
+            showStatus(getString(R.string.template_deploy_invalid));
+            return;
+        }
+        runTask(getString(R.string.template_deploying), () -> {
+            JSONObject result = PortalStore.deployTemplate(this,
+                    PortalStore.organizationId(this), PortalStore.projectId(this),
+                    selectedTemplate.optString("id", ""), name, size,
+                    ConfigStore.storedSerial(this), ConfigStore.peerId(this));
+            runOnUiThread(() -> new AlertDialog.Builder(this)
+                    .setTitle(R.string.template_deploy_success_title)
+                    .setMessage(getString(R.string.template_deploy_success,
+                            result.optString("name", name)))
+                    .setPositiveButton(android.R.string.ok, (dialog, which) -> showHomePage())
+                    .show());
+        });
     }
 
     private Spinner portalSpinner() {
@@ -776,12 +936,16 @@ public final class MainActivity extends Activity {
     }
 
     private View subpageHeader(int titleLabel) {
+        return subpageHeader(titleLabel, view -> showHomePage());
+    }
+
+    private View subpageHeader(int titleLabel, View.OnClickListener backListener) {
         LinearLayout hero = verticalPanel(14, gradient(
                 color(R.color.edgez_blue_dark), color(R.color.edgez_blue), 18));
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        Button back = compactButton(R.string.back_to_apps, view -> showHomePage());
+        Button back = compactButton(R.string.back_to_apps, backListener);
         row.addView(back);
         TextView title = text(getString(titleLabel), 22, Color.WHITE);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);

@@ -131,6 +131,35 @@ final class PortalStore {
         return request("GET", endpoint, accessToken(context), null);
     }
 
+    static JSONObject loadTemplate(Context context, String templateId, String organizationId)
+            throws IOException, JSONException {
+        String endpoint = BASE_URL + "/api/mobile/templates/" + URLEncoder.encode(
+                templateId, StandardCharsets.UTF_8.name()) + "?organizationId="
+                + URLEncoder.encode(organizationId, StandardCharsets.UTF_8.name());
+        return request("GET", endpoint, accessToken(context), null);
+    }
+
+    static JSONObject deployTemplate(
+            Context context,
+            String organizationId,
+            String projectId,
+            String templateId,
+            String name,
+            String workspaceSize,
+            String deviceSerial,
+            String devicePeerId) throws IOException, JSONException {
+        JSONObject body = new JSONObject();
+        body.put("organizationId", organizationId);
+        body.put("projectId", projectId);
+        body.put("templateId", templateId);
+        body.put("name", name);
+        body.put("workspaceSize", workspaceSize);
+        body.put("deviceSerial", deviceSerial);
+        body.put("devicePeerId", devicePeerId);
+        return request("POST", BASE_URL + "/api/mobile/templates/deploy",
+                accessToken(context), body);
+    }
+
     private static JSONObject request(
             String method, String endpoint, String accessToken, JSONObject body)
             throws IOException, JSONException {
