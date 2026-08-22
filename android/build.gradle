@@ -17,6 +17,12 @@ allprojects {
     google()
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
+    ivy {
+      url 'https://github.com/edgez-ai/organicmaps/releases/download/v0.0.5'
+      patternLayout { artifact '[artifact]-[revision].[ext]' }
+      metadataSources { artifact() }
+      content { includeGroup 'ai.edgez.organicmaps' }
+    }
   }
 }
 

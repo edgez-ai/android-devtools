@@ -12,7 +12,9 @@
     "doctor": "expo-doctor"
   },
   "dependencies": {
+    "@edgez/react-native-sdk": "0.1.1",
     "@orbital-systems/react-native-esp-idf-provisioning": "^0.5.5",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.9",
     "expo-dev-client": "~57.0.7",
     "expo-status-bar": "~57.0.1",
