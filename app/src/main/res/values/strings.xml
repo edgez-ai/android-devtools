@@ -91,6 +91,8 @@
     <string name="workspace_codex_connected">Codex connected</string>
     <string name="workspace_codex_input_hint">Message Codex</string>
     <string name="workspace_codex_send">Send</string>
+    <string name="workspace_codex_stop">Stop</string>
+    <string name="workspace_codex_stopping">Stopping…</string>
     <string name="workspace_codex_voice_mode">Voice</string>
     <string name="workspace_codex_text_mode">Text</string>
     <string name="workspace_codex_hold_to_talk">Hold to talk</string>

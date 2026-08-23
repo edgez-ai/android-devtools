@@ -77,12 +77,16 @@ final class CodexChatDialog {
     private MediaRecorder mediaRecorder;
     private File voiceRecordingFile;
     private String threadId;
+    private String activeTurnId;
     private String pendingPrompt;
     private TextView streamingAgentMessage;
     private StringBuilder streamingAgentMarkdown;
     private volatile String activeModel;
     private int nextRequestId = 10;
     private boolean closed;
+    private boolean connected;
+    private boolean turnInProgress;
+    private boolean stopRequested;
     private boolean voiceMode;
     private boolean cancelVoiceMessage;
     private boolean voiceRecording;
@@ -162,7 +166,10 @@ final class CodexChatDialog {
         holdToTalk.setOnTouchListener((view, event) -> handleVoiceTouch(event));
         composer.addView(holdToTalk, new LinearLayout.LayoutParams(
                 0, dp(46), 1));
-        send = button(R.string.workspace_codex_send, true, view -> sendPrompt());
+        send = button(R.string.workspace_codex_send, true, view -> {
+            if (turnInProgress) interruptTurn();
+            else sendPrompt();
+        });
         send.setEnabled(false);
         composer.addView(send, new LinearLayout.LayoutParams(dp(76), dp(46)));
         page.addView(composer);
@@ -233,10 +240,8 @@ final class CodexChatDialog {
                 .put("sortKey", "updated_at"));
         activity.runOnUiThread(() -> {
             connectionStatus.setText(R.string.workspace_codex_connected);
-            input.setEnabled(true);
-            send.setEnabled(true);
-            inputModeToggle.setEnabled(true);
-            holdToTalk.setEnabled(true);
+            connected = true;
+            updateComposerState();
         });
     }
 
@@ -245,9 +250,7 @@ final class CodexChatDialog {
         inputModeToggle.setText(enabled
                 ? R.string.workspace_codex_text_mode
                 : R.string.workspace_codex_voice_mode);
-        input.setVisibility(enabled ? View.GONE : View.VISIBLE);
-        send.setVisibility(enabled ? View.GONE : View.VISIBLE);
-        holdToTalk.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        updateComposerState();
         if (!enabled && voiceRecording) {
             cancelVoiceMessage = true;
             releaseVoiceRecorder(true);
@@ -432,10 +435,14 @@ final class CodexChatDialog {
 
     private void sendPrompt(String value) {
         String prompt = value == null ? "" : value.trim();
-        if (prompt.isEmpty() || socket == null) return;
+        if (prompt.isEmpty() || socket == null || turnInProgress) return;
         input.setText("");
+        // A new turn must always create a new assistant bubble. Keeping this
+        // pointer would cause streaming deltas to overwrite the prior answer.
+        streamingAgentMessage = null;
+        streamingAgentMarkdown = null;
         addMessage(prompt, true);
-        send.setEnabled(false);
+        setTurnInProgress(true);
         try {
             if (threadId == null) {
                 pendingPrompt = prompt;
@@ -444,8 +451,54 @@ final class CodexChatDialog {
             }
             startTurn(prompt);
         } catch (JSONException error) {
+            setTurnInProgress(false);
             fail(error.getMessage());
         }
+    }
+
+    private void interruptTurn() {
+        if (!turnInProgress || stopRequested || socket == null) return;
+        if (threadId == null || activeTurnId == null) {
+            // The turn/start notification can arrive just after the user taps Stop.
+            stopRequested = true;
+            updateComposerState();
+            return;
+        }
+        stopRequested = true;
+        updateComposerState();
+        try {
+            sendRequest(nextRequestId++, "turn/interrupt", new JSONObject()
+                    .put("threadId", threadId)
+                    .put("turnId", activeTurnId));
+        } catch (JSONException error) {
+            stopRequested = false;
+            updateComposerState();
+            fail(error.getMessage());
+        }
+    }
+
+    private void setTurnInProgress(boolean inProgress) {
+        turnInProgress = inProgress;
+        if (!inProgress) {
+            activeTurnId = null;
+            stopRequested = false;
+        }
+        updateComposerState();
+    }
+
+    private void updateComposerState() {
+        boolean canCompose = connected && !turnInProgress;
+        input.setEnabled(canCompose);
+        inputModeToggle.setEnabled(canCompose);
+        holdToTalk.setEnabled(canCompose);
+        send.setEnabled(connected && !stopRequested);
+        send.setText(turnInProgress
+                ? (stopRequested ? R.string.workspace_codex_stopping
+                        : R.string.workspace_codex_stop)
+                : R.string.workspace_codex_send);
+        input.setVisibility(!turnInProgress && voiceMode ? View.GONE : View.VISIBLE);
+        holdToTalk.setVisibility(!turnInProgress && voiceMode ? View.VISIBLE : View.GONE);
+        send.setVisibility(turnInProgress || !voiceMode ? View.VISIBLE : View.GONE);
     }
 
     private void startThread() throws JSONException {
@@ -514,7 +567,13 @@ final class CodexChatDialog {
 
         String method = message.optString("method", "");
         JSONObject params = message.optJSONObject("params");
-        if ("item/agentMessage/delta".equals(method) && params != null) {
+        if ("turn/started".equals(method) && params != null) {
+            JSONObject turn = params.optJSONObject("turn");
+            activeTurnId = turn == null ? null : turn.optString("id", null);
+            if (stopRequested && activeTurnId != null) {
+                activity.runOnUiThread(this::interruptTurnAfterStart);
+            }
+        } else if ("item/agentMessage/delta".equals(method) && params != null) {
             appendAgentDelta(params.optString("delta", ""));
         } else if ("item/completed".equals(method) && params != null) {
             JSONObject item = params.optJSONObject("item");
@@ -533,10 +592,16 @@ final class CodexChatDialog {
             activity.runOnUiThread(() -> {
                 streamingAgentMessage = null;
                 streamingAgentMarkdown = null;
-                send.setEnabled(true);
+                setTurnInProgress(false);
                 loadThreads();
             });
         }
+    }
+
+    private void interruptTurnAfterStart() {
+        // Preserve the queued stop request while allowing interruptTurn() to send it.
+        stopRequested = false;
+        interruptTurn();
     }
 
     private void resolveServerRequest(JSONObject request) throws JSONException {
@@ -633,7 +698,7 @@ final class CodexChatDialog {
                     }
                 }
             }
-            send.setEnabled(true);
+            setTurnInProgress(false);
         });
     }
 
@@ -671,6 +736,7 @@ final class CodexChatDialog {
     }
 
     private void showConversationDrawer() {
+        if (turnInProgress) return;
         LinearLayout panel = new LinearLayout(activity);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(14), dp(20), dp(14), dp(20));
@@ -739,6 +805,10 @@ final class CodexChatDialog {
             send.setEnabled(false);
             inputModeToggle.setEnabled(false);
             holdToTalk.setEnabled(false);
+            connected = false;
+            turnInProgress = false;
+            activeTurnId = null;
+            stopRequested = false;
         });
     }
 
