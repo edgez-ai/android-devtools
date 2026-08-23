@@ -72,6 +72,9 @@ final class CodexChatDialog {
     private final Button holdToTalk;
     private final TextView connectionStatus;
     private final Map<String, JSONObject> threads = new LinkedHashMap<>();
+    private final Map<String, TextView> activityViews = new LinkedHashMap<>();
+    private final Map<String, StringBuilder> reasoningSummaries = new LinkedHashMap<>();
+    private final Map<String, Integer> reasoningSummaryIndexes = new LinkedHashMap<>();
     private WebSocket socket;
     private PopupWindow conversationDrawer;
     private MediaRecorder mediaRecorder;
@@ -81,6 +84,7 @@ final class CodexChatDialog {
     private String pendingPrompt;
     private TextView streamingAgentMessage;
     private StringBuilder streamingAgentMarkdown;
+    private String streamingAgentItemId;
     private volatile String activeModel;
     private int nextRequestId = 10;
     private boolean closed;
@@ -317,6 +321,7 @@ final class CodexChatDialog {
             mediaRecorder.start();
             cancelVoiceMessage = false;
             voiceRecording = true;
+            setRecordingVisual(true);
             holdToTalk.setText(R.string.workspace_codex_release_to_send);
             connectionStatus.setText(R.string.workspace_codex_connected);
         } catch (IOException | RuntimeException error) {
@@ -329,6 +334,7 @@ final class CodexChatDialog {
     private void finishVoiceRecognition() {
         if (!voiceRecording || mediaRecorder == null) return;
         voiceRecording = false;
+        setRecordingVisual(false);
         if (cancelVoiceMessage) {
             releaseVoiceRecorder(true);
             resetVoiceControl();
@@ -425,8 +431,19 @@ final class CodexChatDialog {
 
     private void resetVoiceControl() {
         voiceRecording = false;
+        setRecordingVisual(false);
         holdToTalk.setEnabled(true);
         holdToTalk.setText(R.string.workspace_codex_hold_to_talk);
+    }
+
+    private void setRecordingVisual(boolean recording) {
+        holdToTalk.animate().cancel();
+        holdToTalk.animate()
+                .scaleX(recording ? 1.08f : 1f)
+                .scaleY(recording ? 1.16f : 1f)
+                .setDuration(140L)
+                .start();
+        holdToTalk.setElevation(dp(recording ? 8 : 0));
     }
 
     private void sendPrompt() {
@@ -441,6 +458,7 @@ final class CodexChatDialog {
         // pointer would cause streaming deltas to overwrite the prior answer.
         streamingAgentMessage = null;
         streamingAgentMarkdown = null;
+        streamingAgentItemId = null;
         addMessage(prompt, true);
         setTurnInProgress(true);
         try {
@@ -510,8 +528,12 @@ final class CodexChatDialog {
     private void resumeThread(String id) {
         threadId = id;
         messages.removeAllViews();
+        activityViews.clear();
+        reasoningSummaries.clear();
+        reasoningSummaryIndexes.clear();
         streamingAgentMessage = null;
         streamingAgentMarkdown = null;
+        streamingAgentItemId = null;
         try {
             sendRequest(THREAD_RESUME_ID, "thread/resume",
                     new JSONObject().put("threadId", id));
@@ -573,25 +595,40 @@ final class CodexChatDialog {
             if (stopRequested && activeTurnId != null) {
                 activity.runOnUiThread(this::interruptTurnAfterStart);
             }
+        } else if ("item/reasoning/summaryTextDelta".equals(method) && params != null) {
+            appendReasoningSummary(params);
+        } else if ("turn/plan/updated".equals(method) && params != null) {
+            renderPlan(params);
+        } else if ("item/started".equals(method) && params != null) {
+            JSONObject item = params.optJSONObject("item");
+            if (item != null) renderActivityItem(item, false);
         } else if ("item/agentMessage/delta".equals(method) && params != null) {
-            appendAgentDelta(params.optString("delta", ""));
+            appendAgentDelta(params);
         } else if ("item/completed".equals(method) && params != null) {
             JSONObject item = params.optJSONObject("item");
             if (item != null && "agentMessage".equals(item.optString("type", ""))) {
                 String completedMarkdown = item.optString("text", "");
+                String completedItemId = item.optString("id", "");
                 activity.runOnUiThread(() -> {
-                    if (streamingAgentMessage == null) {
+                    if (streamingAgentMessage == null
+                            || !completedItemId.equals(streamingAgentItemId)) {
                         addMessage(completedMarkdown, false);
                     } else if (!completedMarkdown.isEmpty()) {
                         streamingAgentMarkdown = new StringBuilder(completedMarkdown);
                         renderMarkdown(streamingAgentMessage, completedMarkdown);
                     }
+                    streamingAgentMessage = null;
+                    streamingAgentMarkdown = null;
+                    streamingAgentItemId = null;
                 });
+            } else if (item != null) {
+                renderActivityItem(item, true);
             }
         } else if ("turn/completed".equals(method)) {
             activity.runOnUiThread(() -> {
                 streamingAgentMessage = null;
                 streamingAgentMarkdown = null;
+                streamingAgentItemId = null;
                 setTurnInProgress(false);
                 loadThreads();
             });
@@ -672,8 +709,12 @@ final class CodexChatDialog {
         JSONArray turns = thread == null ? null : thread.optJSONArray("turns");
         activity.runOnUiThread(() -> {
             messages.removeAllViews();
+            activityViews.clear();
+            reasoningSummaries.clear();
+            reasoningSummaryIndexes.clear();
             streamingAgentMessage = null;
             streamingAgentMarkdown = null;
+            streamingAgentItemId = null;
             if (turns != null) {
                 for (int turnIndex = 0; turnIndex < turns.length(); turnIndex++) {
                     JSONObject turn = turns.optJSONObject(turnIndex);
@@ -694,6 +735,8 @@ final class CodexChatDialog {
                                     addMessage(value.optString("text", ""), true);
                                 }
                             }
+                        } else {
+                            renderHistoricalActivityItem(item);
                         }
                     }
                 }
@@ -702,17 +745,160 @@ final class CodexChatDialog {
         });
     }
 
-    private void appendAgentDelta(String delta) {
+    private void appendAgentDelta(JSONObject params) {
+        String delta = params.optString("delta", "");
         if (delta.isEmpty()) return;
+        String itemId = params.optString("itemId", "");
         activity.runOnUiThread(() -> {
-            if (streamingAgentMessage == null) {
+            if (streamingAgentMessage == null || !itemId.equals(streamingAgentItemId)) {
                 streamingAgentMessage = addMessage("", false);
                 streamingAgentMarkdown = new StringBuilder();
+                streamingAgentItemId = itemId;
             }
             streamingAgentMarkdown.append(delta);
             renderMarkdown(streamingAgentMessage, streamingAgentMarkdown.toString());
             scrollToBottom();
         });
+    }
+
+    private void appendReasoningSummary(JSONObject params) {
+        String itemId = params.optString("itemId", "");
+        String delta = params.optString("delta", "");
+        if (itemId.isEmpty() || delta.isEmpty()) return;
+        int summaryIndex = params.optInt("summaryIndex", 0);
+        activity.runOnUiThread(() -> {
+            StringBuilder summary = reasoningSummaries.get(itemId);
+            if (summary == null) {
+                summary = new StringBuilder();
+                reasoningSummaries.put(itemId, summary);
+            }
+            Integer previousIndex = reasoningSummaryIndexes.put(itemId, summaryIndex);
+            if (previousIndex != null && previousIndex != summaryIndex && summary.length() > 0) {
+                summary.append("\n\n");
+            }
+            summary.append(delta);
+            updateActivity(itemId, activity.getString(R.string.workspace_codex_thinking)
+                    + "\n" + summary);
+        });
+    }
+
+    private void renderPlan(JSONObject params) {
+        JSONArray plan = params.optJSONArray("plan");
+        String turn = params.optString("turnId", "current");
+        StringBuilder text = new StringBuilder(activity.getString(
+                R.string.workspace_codex_plan));
+        if (plan != null) {
+            for (int index = 0; index < plan.length(); index++) {
+                JSONObject step = plan.optJSONObject(index);
+                if (step == null) continue;
+                String status = step.optString("status", "pending");
+                text.append("\n").append("completed".equals(status) ? "✓ " : "• ")
+                        .append(step.optString("step", ""));
+            }
+        }
+        activity.runOnUiThread(() -> updateActivity("plan:" + turn, text.toString()));
+    }
+
+    private void renderActivityItem(JSONObject item, boolean completed) {
+        activity.runOnUiThread(() -> {
+            String type = item.optString("type", "");
+            if ("reasoning".equals(type)) {
+                JSONArray summary = item.optJSONArray("summary");
+                if (summary != null && summary.length() > 0) {
+                    StringBuilder text = new StringBuilder(
+                            activity.getString(R.string.workspace_codex_thinking));
+                    for (int index = 0; index < summary.length(); index++) {
+                        String part = summary.optString(index, "").trim();
+                        if (!part.isEmpty()) text.append("\n").append(part);
+                    }
+                    updateActivity(item.optString("id", "reasoning"), text.toString());
+                }
+                return;
+            }
+            String description = activityDescription(item, completed);
+            if (!description.isEmpty()) {
+                updateActivity(item.optString("id", type), description);
+            }
+        });
+    }
+
+    private void renderHistoricalActivityItem(JSONObject item) {
+        String type = item.optString("type", "");
+        if ("plan".equals(type)) {
+            updateActivity(item.optString("id", "plan"),
+                    activity.getString(R.string.workspace_codex_plan) + "\n"
+                            + item.optString("text", ""));
+        } else {
+            renderActivityItem(item, true);
+        }
+    }
+
+    private String activityDescription(JSONObject item, boolean completed) {
+        String type = item.optString("type", "");
+        String status = item.optString("status", "");
+        String marker = "failed".equals(status) || "declined".equals(status)
+                ? "✕ " : completed ? "✓ " : "• ";
+        if ("commandExecution".equals(type)) {
+            return marker + activity.getString(R.string.workspace_codex_running_command)
+                    + "\n`" + item.optString("command", "") + "`";
+        }
+        if ("fileChange".equals(type)) {
+            StringBuilder text = new StringBuilder(marker).append(
+                    activity.getString(R.string.workspace_codex_updating_files));
+            JSONArray changes = item.optJSONArray("changes");
+            if (changes != null) {
+                for (int index = 0; index < Math.min(changes.length(), 4); index++) {
+                    JSONObject change = changes.optJSONObject(index);
+                    if (change != null) text.append("\n• ").append(
+                            change.optString("path", ""));
+                }
+            }
+            return text.toString();
+        }
+        if ("mcpToolCall".equals(type)) {
+            return marker + activity.getString(R.string.workspace_codex_using_tool)
+                    + "\n" + item.optString("server", "") + " · "
+                    + item.optString("tool", "");
+        }
+        if ("dynamicToolCall".equals(type)) {
+            return marker + activity.getString(R.string.workspace_codex_using_tool)
+                    + "\n" + item.optString("tool", "");
+        }
+        if ("webSearch".equals(type)) {
+            return marker + activity.getString(R.string.workspace_codex_searching)
+                    + "\n" + item.optString("query", "");
+        }
+        if ("collabAgentToolCall".equals(type) || "subAgentActivity".equals(type)) {
+            return marker + activity.getString(R.string.workspace_codex_agent_activity);
+        }
+        if ("imageView".equals(type)) {
+            return marker + activity.getString(R.string.workspace_codex_viewing_image);
+        }
+        if ("imageGeneration".equals(type)) {
+            return marker + activity.getString(R.string.workspace_codex_generating_image);
+        }
+        if ("contextCompaction".equals(type)) {
+            return marker + activity.getString(R.string.workspace_codex_compacting);
+        }
+        return "";
+    }
+
+    private void updateActivity(String itemId, String markdown) {
+        TextView view = activityViews.get(itemId);
+        if (view == null) {
+            view = text("", 13, color(R.color.edgez_text_muted));
+            view.setTextIsSelectable(true);
+            view.setMovementMethod(LinkMovementMethod.getInstance());
+            view.setPadding(dp(12), dp(9), dp(12), dp(9));
+            view.setBackground(roundRect(color(R.color.edgez_blue_soft), 13));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            params.setMargins(0, dp(4), dp(34), dp(4));
+            messages.addView(view, params);
+            activityViews.put(itemId, view);
+        }
+        renderMarkdown(view, markdown);
+        scrollToBottom();
     }
 
     private TextView addMessage(String value, boolean mine) {
@@ -749,8 +935,12 @@ final class CodexChatDialog {
             threadId = null;
             pendingPrompt = null;
             messages.removeAllViews();
+            activityViews.clear();
+            reasoningSummaries.clear();
+            reasoningSummaryIndexes.clear();
             streamingAgentMessage = null;
             streamingAgentMarkdown = null;
+            streamingAgentItemId = null;
             if (conversationDrawer != null) conversationDrawer.dismiss();
         }), margins(0, 0, 0, 10));
         for (Map.Entry<String, JSONObject> entry : threads.entrySet()) {
