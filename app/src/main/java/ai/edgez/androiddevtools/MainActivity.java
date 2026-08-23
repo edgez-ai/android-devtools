@@ -42,6 +42,8 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
 
@@ -97,6 +99,7 @@ public final class MainActivity extends Activity {
     private Button loginSubmitButton;
     private TextView loginCheckEmailText;
     private LinearLayout projectContent;
+    private SwipeRefreshLayout homeRefreshLayout;
     private LinearLayout templatesContent;
     private LinearLayout templateDetailContent;
     private LinearLayout workspaceChatContainer;
@@ -285,6 +288,7 @@ public final class MainActivity extends Activity {
         loginSubmitButton = null;
         loginCheckEmailText = null;
         projectContent = null;
+        homeRefreshLayout = null;
         templatesContent = null;
         templateDetailContent = null;
         workspaceChatContainer = null;
@@ -359,7 +363,13 @@ public final class MainActivity extends Activity {
 
         statusText = statusLabel(getString(R.string.portal_loading));
         content.addView(statusText, margins(0, 22, 0, 0));
-        return scroll(content);
+        homeRefreshLayout = new SwipeRefreshLayout(this);
+        homeRefreshLayout.setColorSchemeResources(R.color.edgez_blue);
+        homeRefreshLayout.setOnRefreshListener(() ->
+                loadPortalHome(PortalStore.organizationId(this)));
+        homeRefreshLayout.addView(scroll(content), new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        return homeRefreshLayout;
     }
 
     private View loginCard() {
@@ -1441,9 +1451,20 @@ public final class MainActivity extends Activity {
     }
 
     private void loadPortalHome(String organizationId) {
-        runTask(getString(R.string.portal_loading), () -> {
-            JSONObject response = PortalStore.loadHome(this, organizationId);
-            runOnUiThread(() -> applyPortalHome(response));
+        showStatus(getString(R.string.portal_loading));
+        executor.execute(() -> {
+            try {
+                JSONObject response = PortalStore.loadHome(this, organizationId);
+                runOnUiThread(() -> {
+                    if (homeRefreshLayout != null) homeRefreshLayout.setRefreshing(false);
+                    applyPortalHome(response);
+                });
+            } catch (Throwable throwable) {
+                runOnUiThread(() -> {
+                    if (homeRefreshLayout != null) homeRefreshLayout.setRefreshing(false);
+                    showStatus(getString(R.string.status_error, safeMessage(throwable)));
+                });
+            }
         });
     }
 
