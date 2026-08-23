@@ -26,6 +26,7 @@ import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -42,6 +43,7 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
@@ -76,6 +78,7 @@ public final class MainActivity extends Activity {
             "ai.edgez.androiddevtools.extra.EMBEDDED_BUNDLE_NAME";
     private static final String INSTALLED_APP_DIRECTORY = "edgez-devtools/apps";
     private static final String INSTALLED_BUNDLE_DIRECTORY = "edgez-devtools/bundles";
+    private static final String INSTALLED_APP_MANIFEST_FIELD = "_manifestFile";
     private static final Pattern APP_ID_PATTERN = Pattern.compile("[a-z0-9._-]+");
     private static final Pattern BUNDLE_NAME_PATTERN =
             Pattern.compile("[A-Za-z0-9._-]+[.]android[.]bundle");
@@ -950,12 +953,13 @@ public final class MainActivity extends Activity {
                 JSONObject app = apps.get(appIndex);
                 String bundleName = app.optString("bundle");
                 String displayName = app.optString("name");
-                row.addView(appTile(
+                row.addView(installedAppTile(
                         app.optString("icon", "APP"),
                         displayName,
                         app.optString("description", getString(R.string.installed_app_description)),
                         getString(R.string.app_badge_installed),
-                        view -> openInstalledBundle(bundleName, displayName)),
+                        view -> openInstalledBundle(bundleName, displayName),
+                        app),
                         gridTileMargins(column == 0 ? 0 : 6, column == 0 ? 6 : 0));
             }
             content.addView(row, margins(0, 12, 0, 0));
@@ -993,10 +997,63 @@ public final class MainActivity extends Activity {
                 File bundle = new File(bundleDirectory, bundleName).getCanonicalFile();
                 if (!bundleDirectory.equals(bundle.getParentFile())
                         || !bundle.isFile() || !bundle.canRead() || bundle.length() == 0) continue;
+                app.put(INSTALLED_APP_MANIFEST_FIELD, manifest.getName());
                 apps.add(app);
             } catch (IOException | JSONException ignored) { }
         }
         return apps;
+    }
+
+    private View installedAppTile(String icon, String title, String description, String badge,
+            View.OnClickListener listener, JSONObject app) {
+        LinearLayout tile = (LinearLayout) appTile(icon, title, description, badge, listener);
+        tile.setContentDescription(getString(R.string.installed_app_card_description, title));
+        tile.setLongClickable(true);
+        tile.setOnLongClickListener(view -> {
+            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            showDeleteInstalledAppDialog(app);
+            return true;
+        });
+        return tile;
+    }
+
+    private void showDeleteInstalledAppDialog(JSONObject app) {
+        String appName = app.optString("name", getString(R.string.installed_app_fallback_name));
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.delete_installed_app_title, appName))
+                .setMessage(R.string.delete_installed_app_message)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.delete_installed_app_confirm,
+                        (dialog, which) -> deleteInstalledApp(app, appName))
+                .show();
+    }
+
+    private void deleteInstalledApp(JSONObject app, String appName) {
+        try {
+            File manifestDirectory = new File(
+                    getFilesDir(), INSTALLED_APP_DIRECTORY).getCanonicalFile();
+            File bundleDirectory = new File(
+                    getFilesDir(), INSTALLED_BUNDLE_DIRECTORY).getCanonicalFile();
+            File manifest = new File(manifestDirectory,
+                    app.optString(INSTALLED_APP_MANIFEST_FIELD, "")).getCanonicalFile();
+            File bundle = new File(bundleDirectory,
+                    app.optString("bundle", "")).getCanonicalFile();
+            if (!manifestDirectory.equals(manifest.getParentFile())
+                    || !bundleDirectory.equals(bundle.getParentFile())) {
+                throw new IOException("Installed app path escaped private storage");
+            }
+
+            boolean manifestDeleted = !manifest.exists() || manifest.delete();
+            boolean bundleDeleted = !bundle.exists() || bundle.delete();
+            if (!manifestDeleted || !bundleDeleted) {
+                throw new IOException("Unable to remove installed app files");
+            }
+            Toast.makeText(this, getString(R.string.delete_installed_app_success, appName),
+                    Toast.LENGTH_SHORT).show();
+            showHomePage();
+        } catch (IOException exception) {
+            Toast.makeText(this, R.string.delete_installed_app_failed, Toast.LENGTH_LONG).show();
+        }
     }
 
     private void addProjectWorkspaces(LinearLayout content, JSONObject project) {
@@ -2067,6 +2124,12 @@ public final class MainActivity extends Activity {
         tile.setClickable(true);
         tile.setFocusable(true);
         tile.setOnClickListener(listener);
+        tile.setLongClickable(true);
+        tile.setOnLongClickListener(view -> {
+            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            Toast.makeText(this, R.string.system_app_delete_blocked, Toast.LENGTH_SHORT).show();
+            return true;
+        });
         TextView iconView = text(icon, icon.length() > 3 ? 13 : 18, Color.WHITE);
         iconView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         iconView.setGravity(Gravity.CENTER);

@@ -150,6 +150,14 @@
     <string name="app_badge_installed">INSTALLED · OFFLINE</string>
     <string name="app_badge_remote">REMOTE · METRO</string>
     <string name="app_badge_projects">PROJECT LIBRARY</string>
+    <string name="installed_app_card_description">%1$s. Long press to delete.</string>
+    <string name="installed_app_fallback_name">Installed app</string>
+    <string name="system_app_delete_blocked">System apps cannot be deleted.</string>
+    <string name="delete_installed_app_title">Delete %1$s?</string>
+    <string name="delete_installed_app_message">This removes the app and its offline bundle from this device.</string>
+    <string name="delete_installed_app_confirm">Delete</string>
+    <string name="delete_installed_app_success">%1$s was deleted.</string>
+    <string name="delete_installed_app_failed">The app could not be deleted.</string>
     <string name="home_status_ready">Ready. Embedded apps do not require Metro; remote bundles use the Expo project runtime.</string>
     <string name="connection_status">Connection status</string>
     <string name="peer_not_joined">Not connected to EdgeZ</string>
