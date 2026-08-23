@@ -22,14 +22,16 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class ProxyService extends Service {
     static final String ACTION_START = "ai.edgez.androiddevtools.START";
     static final String ACTION_STOP = "ai.edgez.androiddevtools.STOP";
+    private static final String EXTRA_PROJECT_ID =
+            "ai.edgez.androiddevtools.extra.PROJECT_ID";
     private static final String TAG = "AndroidDevTools";
     private static final String CHANNEL_ID = "adb_proxy";
     private static final int NOTIFICATION_ID = 4101;
     private static final long WIRELESS_DEBUG_PROMPT_INTERVAL_MS = 30_000L;
     private static final AtomicLong LAST_WIRELESS_DEBUG_PROMPT_MS = new AtomicLong();
     private static final AtomicBoolean SERVICE_RUNNING = new AtomicBoolean();
+    private static volatile String ACTIVE_PROJECT_ID = "";
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private final AtomicBoolean startScheduled = new AtomicBoolean();
     private volatile boolean stopping;
     private volatile boolean failed;
     private volatile UsbIpServer usbIpServer;
@@ -62,14 +64,13 @@ public final class ProxyService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        if (!stopping && startScheduled.compareAndSet(false, true)) {
-            executor.execute(() -> {
-                try {
-                    startProxy();
-                } finally {
-                    startScheduled.set(false);
-                }
-            });
+        if (!stopping) {
+            String requestedProjectId = intent.getStringExtra(EXTRA_PROJECT_ID);
+            if (requestedProjectId == null || requestedProjectId.trim().isEmpty()) {
+                requestedProjectId = PortalStore.projectId(this);
+            }
+            String projectId = requestedProjectId.trim();
+            executor.execute(() -> startProxy(projectId));
         }
         return START_NOT_STICKY;
     }
@@ -81,6 +82,7 @@ public final class ProxyService extends Service {
         stopNativeClient();
         executor.shutdownNow();
         stopForeground(STOP_FOREGROUND_REMOVE);
+        ACTIVE_PROJECT_ID = "";
         SERVICE_RUNNING.set(false);
         if (!failed) {
             ProxyStatus.publish(this, ProxyStatus.DISCONNECTED, "");
@@ -93,12 +95,27 @@ public final class ProxyService extends Service {
         return null;
     }
 
-    private void startProxy() {
+    private void startProxy(String projectId) {
         if (stopping) {
             return;
         }
         try {
-            if (!ConfigStore.isConfigured(this)) {
+            if (projectId.isEmpty()) {
+                throw new IllegalStateException("The proxy project is missing");
+            }
+            String activeProjectId = ACTIVE_PROJECT_ID;
+            if (projectId.equals(activeProjectId) && isProxyConnected(this)) {
+                Log.i(TAG, "Libp2p proxy already running for project=" + projectId);
+                return;
+            }
+            if (!activeProjectId.isEmpty() && !projectId.equals(activeProjectId)) {
+                Log.i(TAG, "Switching libp2p proxy from project=" + activeProjectId
+                        + " to project=" + projectId);
+                stopUsbIpServer();
+                stopNativeClient();
+                ACTIVE_PROJECT_ID = "";
+            }
+            if (!ConfigStore.isConfigured(this, projectId)) {
                 Log.i(TAG, "No stored libp2p config; stopping proxy service");
                 ProxyStatus.publish(this, ProxyStatus.DISCONNECTED, "");
                 stopSelf();
@@ -106,7 +123,11 @@ public final class ProxyService extends Service {
             }
 
             startUsbIpServer();
-            Log.i(TAG, "Libp2p startup: loading stored config");
+            failed = false;
+            ProxyStatus.publish(this, ProxyStatus.CONNECTING, "");
+            updateNotification(getString(R.string.proxy_starting));
+            Log.i(TAG, "Libp2p startup: loading project-scoped config project=" + projectId
+                    + " peer=" + ConfigStore.peerId(this, projectId));
             Endpoint endpoint = WirelessDebugDiscovery.discoverConnect(this, 5_000);
             if (endpoint != null) {
                 ConfigStore.saveAdbEndpoint(this, endpoint);
@@ -117,13 +138,14 @@ public final class ProxyService extends Service {
             if (stopping || Thread.currentThread().isInterrupted()) {
                 return;
             }
-            JSONObject runtimeConfig = new JSONObject(ConfigStore.clientConfig(this));
+            JSONObject runtimeConfig = new JSONObject(ConfigStore.clientConfig(this, projectId));
             runtimeConfig.put("usbip_socket_name", usbIpServer.socketName());
             String response = NativeBridge.nativeStartClient(runtimeConfig.toString());
             JSONObject result = new JSONObject(response);
             if (!result.optBoolean("ok")) {
                 throw new IllegalStateException(result.optString("error", response));
             }
+            ACTIVE_PROJECT_ID = projectId;
             usbIpServer.publishUsbSnapshot();
             if (stopping || Thread.currentThread().isInterrupted()) {
                 stopNativeClient();
@@ -133,7 +155,8 @@ public final class ProxyService extends Service {
             Log.i(
                     TAG,
                     "Libp2p startup complete: state=" + state
-                            + " peer=" + result.optString("peer_id", ConfigStore.peerId(this))
+                            + " peer=" + result.optString(
+                                    "peer_id", ConfigStore.peerId(this, projectId))
                             + " relayBooked=" + result.optBoolean("relay_booked"));
             if (endpoint != null) {
                 startLocalScrcpy();
@@ -141,12 +164,13 @@ public final class ProxyService extends Service {
             if (endpoint == null) {
                 ProxyStatus.publish(this, ProxyStatus.MESH_ONLINE, "");
                 updateNotification(getString(
-                        R.string.proxy_online_no_adb, ConfigStore.peerId(this)));
+                        R.string.proxy_online_no_adb, ConfigStore.peerId(this, projectId)));
             } else {
                 ProxyStatus.publish(this, ProxyStatus.ADB_ONLINE,
                         getString(R.string.proxy_endpoint_format, endpoint.port));
                 updateNotification(getString(
-                        R.string.proxy_online, ConfigStore.peerId(this), endpoint.port));
+                        R.string.proxy_online,
+                        ConfigStore.peerId(this, projectId), endpoint.port));
             }
         } catch (Throwable throwable) {
             Log.e(TAG, "Unable to start proxy", throwable);
@@ -201,7 +225,13 @@ public final class ProxyService extends Service {
     }
 
     static void start(Context context) {
-        Intent intent = new Intent(context, ProxyService.class).setAction(ACTION_START);
+        start(context, PortalStore.projectId(context));
+    }
+
+    static void start(Context context, String projectId) {
+        Intent intent = new Intent(context, ProxyService.class)
+                .setAction(ACTION_START)
+                .putExtra(EXTRA_PROJECT_ID, projectId == null ? "" : projectId.trim());
         context.startForegroundService(intent);
     }
 
@@ -214,6 +244,11 @@ public final class ProxyService extends Service {
 
     static boolean isRunning() {
         return SERVICE_RUNNING.get();
+    }
+
+    static boolean isRunningForProject(String projectId) {
+        return SERVICE_RUNNING.get() && projectId != null
+                && projectId.trim().equals(ACTIVE_PROJECT_ID);
     }
 
     static void refreshAdbTarget(Context context) {

@@ -217,15 +217,23 @@ final class ConfigStore {
     }
 
     static boolean isConfigured(Context context) {
+        return isConfigured(context, PortalStore.projectId(context));
+    }
+
+    static boolean isConfigured(Context context, String projectId) {
         SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        migrateLegacyIdentity(context, preferences);
-        return !preferences.getString(scopedKey(context, KEY_CONFIG), "").isEmpty();
+        migrateLegacyIdentity(context, preferences, projectId);
+        return !preferences.getString(scopedKey(projectId, KEY_CONFIG), "").isEmpty();
     }
 
     static String peerId(Context context) {
+        return peerId(context, PortalStore.projectId(context));
+    }
+
+    static String peerId(Context context, String projectId) {
         SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        migrateLegacyIdentity(context, preferences);
-        return preferences.getString(scopedKey(context, KEY_PEER_ID), "");
+        migrateLegacyIdentity(context, preferences, projectId);
+        return preferences.getString(scopedKey(projectId, KEY_PEER_ID), "");
     }
 
     static String storedSerial(Context context) {
@@ -241,14 +249,18 @@ final class ConfigStore {
     }
 
     static String clientConfig(Context context) throws JSONException {
+        return clientConfig(context, PortalStore.projectId(context));
+    }
+
+    static String clientConfig(Context context, String projectId) throws JSONException {
         SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        migrateLegacyIdentity(context, preferences);
-        String stored = preferences.getString(scopedKey(context, KEY_CONFIG), "");
+        migrateLegacyIdentity(context, preferences, projectId);
+        String stored = preferences.getString(scopedKey(projectId, KEY_CONFIG), "");
         if (stored == null || stored.isEmpty()) {
             throw new JSONException("device has not joined the network");
         }
         JSONObject config = new JSONObject(stored);
-        String serial = preferences.getString(scopedKey(context, KEY_SERIAL), "");
+        String serial = preferences.getString(scopedKey(projectId, KEY_SERIAL), "");
         if (serial != null && !serial.isEmpty()) {
             config.put("serial_number", serial);
         }
@@ -269,15 +281,24 @@ final class ConfigStore {
     }
 
     private static String scopedKey(Context context, String key) {
-        String projectId = PortalStore.projectId(context).trim();
+        return scopedKey(PortalStore.projectId(context), key);
+    }
+
+    private static String scopedKey(String projectId, String key) {
+        projectId = projectId == null ? "" : projectId.trim();
         return projectId.isEmpty() ? key : PROJECT_PREFIX + projectId + "." + key;
     }
 
     private static synchronized void migrateLegacyIdentity(
             Context context, SharedPreferences preferences) {
-        String projectId = PortalStore.projectId(context).trim();
+        migrateLegacyIdentity(context, preferences, PortalStore.projectId(context));
+    }
+
+    private static synchronized void migrateLegacyIdentity(
+            Context context, SharedPreferences preferences, String requestedProjectId) {
+        String projectId = requestedProjectId == null ? "" : requestedProjectId.trim();
         if (projectId.isEmpty()
-                || !preferences.getString(scopedKey(context, KEY_CONFIG), "").isEmpty()) {
+                || !preferences.getString(scopedKey(projectId, KEY_CONFIG), "").isEmpty()) {
             return;
         }
         String migratedProject = preferences.getString(KEY_LEGACY_MIGRATED_PROJECT, "");

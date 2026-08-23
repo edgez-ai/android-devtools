@@ -1,6 +1,8 @@
 package ai.edgez.androiddevtools;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
@@ -11,6 +13,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.text.method.LinkMovementMethod;
+import android.media.MediaRecorder;
+import android.os.Build;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -25,17 +29,25 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.LinkedHashMap;
+import java.io.File;
+import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import io.noties.markwon.Markwon;
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 
 final class CodexChatDialog {
+    private static final int MICROPHONE_PERMISSION_REQUEST = 4102;
     private static final String[] MODEL_IDS = {
             "gpt-5.6-luna",
             "gpt-5.6-terra",
@@ -56,11 +68,14 @@ final class CodexChatDialog {
     private final ScrollView messageScroll;
     private final EditText input;
     private final Button send;
-    private final Spinner modelSelector;
+    private final Button inputModeToggle;
+    private final Button holdToTalk;
     private final TextView connectionStatus;
     private final Map<String, JSONObject> threads = new LinkedHashMap<>();
     private WebSocket socket;
     private PopupWindow conversationDrawer;
+    private MediaRecorder mediaRecorder;
+    private File voiceRecordingFile;
     private String threadId;
     private String pendingPrompt;
     private TextView streamingAgentMessage;
@@ -68,6 +83,10 @@ final class CodexChatDialog {
     private volatile String activeModel;
     private int nextRequestId = 10;
     private boolean closed;
+    private boolean voiceMode;
+    private boolean cancelVoiceMessage;
+    private boolean voiceRecording;
+    private float voiceGestureStartY;
 
     static CodexChatDialog attach(
             Activity activity,
@@ -75,9 +94,7 @@ final class CodexChatDialog {
             JSONObject connection,
             Spinner modelSelector) {
         CodexChatDialog client = new CodexChatDialog(activity, connection, modelSelector);
-        container.removeAllViews();
-        container.addView(client.root, new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        client.attachTo(container);
         client.open();
         return client;
     }
@@ -86,7 +103,6 @@ final class CodexChatDialog {
             Activity activity, JSONObject connection, Spinner modelSelector) {
         this.activity = activity;
         this.connection = connection;
-        this.modelSelector = modelSelector;
         this.activeModel = modelAt(modelSelector.getSelectedItemPosition());
         client = new OkHttpClient.Builder()
                 .pingInterval(20, TimeUnit.SECONDS)
@@ -121,6 +137,10 @@ final class CodexChatDialog {
         composer.setGravity(Gravity.BOTTOM);
         composer.setPadding(dp(8), dp(6), dp(6), dp(6));
         composer.setBackground(roundRect(Color.WHITE, 18));
+        inputModeToggle = button(R.string.workspace_codex_voice_mode, false,
+                view -> setVoiceMode(!voiceMode));
+        inputModeToggle.setEnabled(false);
+        composer.addView(inputModeToggle, new LinearLayout.LayoutParams(dp(62), dp(46)));
         input = new EditText(activity);
         input.setHint(R.string.workspace_codex_input_hint);
         input.setTextSize(15);
@@ -136,11 +156,38 @@ final class CodexChatDialog {
         });
         composer.addView(input, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        holdToTalk = button(R.string.workspace_codex_hold_to_talk, false, view -> { });
+        holdToTalk.setVisibility(View.GONE);
+        holdToTalk.setEnabled(false);
+        holdToTalk.setOnTouchListener((view, event) -> handleVoiceTouch(event));
+        composer.addView(holdToTalk, new LinearLayout.LayoutParams(
+                0, dp(46), 1));
         send = button(R.string.workspace_codex_send, true, view -> sendPrompt());
         send.setEnabled(false);
         composer.addView(send, new LinearLayout.LayoutParams(dp(76), dp(46)));
         page.addView(composer);
 
+    }
+
+    void attachTo(ViewGroup container) {
+        ViewGroup parent = root.getParent() instanceof ViewGroup
+                ? (ViewGroup) root.getParent() : null;
+        if (parent != null) parent.removeView(root);
+        container.removeAllViews();
+        container.addView(root, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        scrollToBottom();
+    }
+
+    void detach() {
+        ViewGroup parent = root.getParent() instanceof ViewGroup
+                ? (ViewGroup) root.getParent() : null;
+        if (parent != null) parent.removeView(root);
+        if (conversationDrawer != null) conversationDrawer.dismiss();
+    }
+
+    void setModelPosition(int position) {
+        activeModel = modelAt(position);
     }
 
     private void open() {
@@ -161,6 +208,8 @@ final class CodexChatDialog {
         if (closed) return;
         closed = true;
         if (conversationDrawer != null) conversationDrawer.dismiss();
+        releaseVoiceRecorder(true);
+        client.dispatcher().cancelAll();
         if (socket != null) socket.close(1000, "Mobile Codex chat closed");
         socket = null;
         client.dispatcher().executorService().shutdown();
@@ -186,13 +235,204 @@ final class CodexChatDialog {
             connectionStatus.setText(R.string.workspace_codex_connected);
             input.setEnabled(true);
             send.setEnabled(true);
+            inputModeToggle.setEnabled(true);
+            holdToTalk.setEnabled(true);
         });
     }
 
+    private void setVoiceMode(boolean enabled) {
+        voiceMode = enabled;
+        inputModeToggle.setText(enabled
+                ? R.string.workspace_codex_text_mode
+                : R.string.workspace_codex_voice_mode);
+        input.setVisibility(enabled ? View.GONE : View.VISIBLE);
+        send.setVisibility(enabled ? View.GONE : View.VISIBLE);
+        holdToTalk.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        if (!enabled && voiceRecording) {
+            cancelVoiceMessage = true;
+            releaseVoiceRecorder(true);
+            resetVoiceControl();
+        }
+    }
+
+    private boolean handleVoiceTouch(android.view.MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case android.view.MotionEvent.ACTION_DOWN:
+                voiceGestureStartY = event.getRawY();
+                startVoiceRecognition();
+                return true;
+            case android.view.MotionEvent.ACTION_MOVE:
+                if (voiceRecording) {
+                    cancelVoiceMessage = voiceGestureStartY - event.getRawY() >= dp(72);
+                    holdToTalk.setText(cancelVoiceMessage
+                            ? R.string.workspace_codex_release_to_cancel
+                            : R.string.workspace_codex_release_to_send);
+                }
+                return true;
+            case android.view.MotionEvent.ACTION_UP:
+                finishVoiceRecognition();
+                return true;
+            case android.view.MotionEvent.ACTION_CANCEL:
+                cancelVoiceMessage = true;
+                finishVoiceRecognition();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private void startVoiceRecognition() {
+        if (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            connectionStatus.setText(R.string.workspace_codex_microphone_permission);
+            activity.requestPermissions(
+                    new String[] { Manifest.permission.RECORD_AUDIO },
+                    MICROPHONE_PERMISSION_REQUEST);
+            return;
+        }
+        try {
+            voiceRecordingFile = File.createTempFile(
+                    "codex-voice-", ".m4a", activity.getCacheDir());
+            mediaRecorder = Build.VERSION.SDK_INT >= 31
+                    ? new MediaRecorder(activity)
+                    : new MediaRecorder();
+            mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            mediaRecorder.setAudioEncodingBitRate(64_000);
+            mediaRecorder.setAudioSamplingRate(16_000);
+            mediaRecorder.setMaxDuration(60_000);
+            mediaRecorder.setOnInfoListener((recorder, what, extra) -> {
+                if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED
+                        && voiceRecording) {
+                    cancelVoiceMessage = false;
+                    activity.runOnUiThread(this::finishVoiceRecognition);
+                }
+            });
+            mediaRecorder.setOutputFile(voiceRecordingFile.getAbsolutePath());
+            mediaRecorder.prepare();
+            mediaRecorder.start();
+            cancelVoiceMessage = false;
+            voiceRecording = true;
+            holdToTalk.setText(R.string.workspace_codex_release_to_send);
+            connectionStatus.setText(R.string.workspace_codex_connected);
+        } catch (IOException | RuntimeException error) {
+            releaseVoiceRecorder(true);
+            resetVoiceControl();
+            connectionStatus.setText(R.string.workspace_codex_voice_unavailable);
+        }
+    }
+
+    private void finishVoiceRecognition() {
+        if (!voiceRecording || mediaRecorder == null) return;
+        voiceRecording = false;
+        if (cancelVoiceMessage) {
+            releaseVoiceRecorder(true);
+            resetVoiceControl();
+        } else {
+            holdToTalk.setText(R.string.workspace_codex_recognizing);
+            holdToTalk.setEnabled(false);
+            File recording = releaseVoiceRecorder(false);
+            if (recording == null || recording.length() == 0) {
+                resetVoiceControl();
+                connectionStatus.setText(R.string.workspace_codex_voice_failed);
+            } else {
+                transcribeVoice(recording);
+            }
+        }
+    }
+
+    private File releaseVoiceRecorder(boolean deleteFile) {
+        MediaRecorder recorder = mediaRecorder;
+        mediaRecorder = null;
+        File recording = voiceRecordingFile;
+        voiceRecordingFile = null;
+        if (recorder != null) {
+            try {
+                recorder.stop();
+            } catch (RuntimeException error) {
+                deleteFile = true;
+            }
+            recorder.reset();
+            recorder.release();
+        }
+        if (deleteFile && recording != null) {
+            //noinspection ResultOfMethodCallIgnored
+            recording.delete();
+            return null;
+        }
+        return recording;
+    }
+
+    private void transcribeVoice(File recording) {
+        RequestBody audio = RequestBody.create(
+                MediaType.get("audio/mp4"), recording);
+        RequestBody multipart = new MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("audio", "voice.m4a", audio)
+                .build();
+        Request request = new Request.Builder()
+                .url(PortalStore.BASE_URL + "/api/mobile/transcribe")
+                .header("Authorization", "Bearer " + PortalStore.accessToken(activity))
+                .post(multipart)
+                .build();
+        client.newBuilder()
+                .callTimeout(90, TimeUnit.SECONDS)
+                .readTimeout(75, TimeUnit.SECONDS)
+                .build()
+                .newCall(request)
+                .enqueue(new Callback() {
+                    @Override
+                    public void onFailure(Call call, IOException error) {
+                        //noinspection ResultOfMethodCallIgnored
+                        recording.delete();
+                        activity.runOnUiThread(() -> {
+                            resetVoiceControl();
+                            connectionStatus.setText(R.string.workspace_codex_voice_failed);
+                        });
+                    }
+
+                    @Override
+                    public void onResponse(Call call, Response response) {
+                        try (Response current = response) {
+                            String payload = current.body() == null
+                                    ? "" : current.body().string();
+                            if (!current.isSuccessful()) {
+                                throw new IOException("Transcription HTTP " + current.code());
+                            }
+                            String transcript = new JSONObject(payload).optString("text", "").trim();
+                            if (transcript.isEmpty()) throw new IOException("Empty transcription");
+                            activity.runOnUiThread(() -> {
+                                resetVoiceControl();
+                                connectionStatus.setText(R.string.workspace_codex_connected);
+                                sendPrompt(transcript);
+                            });
+                        } catch (IOException | JSONException error) {
+                            activity.runOnUiThread(() -> {
+                                resetVoiceControl();
+                                connectionStatus.setText(R.string.workspace_codex_voice_failed);
+                            });
+                        } finally {
+                            //noinspection ResultOfMethodCallIgnored
+                            recording.delete();
+                        }
+                    }
+                });
+    }
+
+    private void resetVoiceControl() {
+        voiceRecording = false;
+        holdToTalk.setEnabled(true);
+        holdToTalk.setText(R.string.workspace_codex_hold_to_talk);
+    }
+
     private void sendPrompt() {
-        String prompt = input.getText().toString().trim();
+        sendPrompt(input.getText().toString());
+    }
+
+    private void sendPrompt(String value) {
+        String prompt = value == null ? "" : value.trim();
         if (prompt.isEmpty() || socket == null) return;
-        activeModel = modelAt(modelSelector.getSelectedItemPosition());
         input.setText("");
         addMessage(prompt, true);
         send.setEnabled(false);
@@ -497,6 +737,8 @@ final class CodexChatDialog {
             connectionStatus.setTextColor(color(R.color.edgez_error));
             input.setEnabled(false);
             send.setEnabled(false);
+            inputModeToggle.setEnabled(false);
+            holdToTalk.setEnabled(false);
         });
     }
 

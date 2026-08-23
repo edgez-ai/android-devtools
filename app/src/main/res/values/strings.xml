@@ -91,7 +91,17 @@
     <string name="workspace_codex_connected">Codex connected</string>
     <string name="workspace_codex_input_hint">Message Codex</string>
     <string name="workspace_codex_send">Send</string>
+    <string name="workspace_codex_voice_mode">Voice</string>
+    <string name="workspace_codex_text_mode">Text</string>
+    <string name="workspace_codex_hold_to_talk">Hold to talk</string>
+    <string name="workspace_codex_release_to_send">Release to send</string>
+    <string name="workspace_codex_release_to_cancel">Release to cancel</string>
+    <string name="workspace_codex_recognizing">Recognizing…</string>
+    <string name="workspace_codex_microphone_permission">Allow microphone access, then hold again to talk.</string>
+    <string name="workspace_codex_voice_unavailable">Voice recognition is unavailable on this device.</string>
+    <string name="workspace_codex_voice_failed">Could not recognize speech. Hold and try again.</string>
     <string name="workspace_codex_conversations">Conversations</string>
+    <string name="workspace_codex_open">Codex</string>
     <string name="workspace_codex_new_conversation">New conversation</string>
     <string name="workspace_codex_untitled">Untitled conversation</string>
     <string name="workspace_codex_invalid_connection">The server returned an invalid Codex connection.</string>

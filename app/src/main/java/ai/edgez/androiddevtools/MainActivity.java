@@ -34,6 +34,7 @@ import android.widget.AdapterView;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.ProgressBar;
@@ -113,7 +114,10 @@ public final class MainActivity extends Activity {
     private LinearLayout newRepositoryPanel;
     private JSONObject selectedTemplate;
     private JSONObject selectedWorkspace;
+    private JSONObject codexWorkspace;
+    private String codexWorkspaceName;
     private String pendingWorkspaceStartName;
+    private String pendingWorkspaceProxyName;
     private JSONArray allowedWorkspaceSizes = new JSONArray();
     private int templatesPage = 1;
     private JSONArray organizations = new JSONArray();
@@ -168,6 +172,7 @@ public final class MainActivity extends Activity {
         maybeShowWirelessDebugDialog(promptRequested
                 || (showingSettings && !isWirelessDebugEnabled()));
         resumePendingWorkspaceStart();
+        resumePendingWorkspaceProxy();
     }
 
     @Override
@@ -188,6 +193,7 @@ public final class MainActivity extends Activity {
         dismissProjectSelectionDialog();
         dismissProjectCreationDialog();
         dismissWorkspaceProgress();
+        closeGlobalCodexChat();
         executor.shutdownNow();
         super.onDestroy();
     }
@@ -219,10 +225,11 @@ public final class MainActivity extends Activity {
         showingTemplates = false;
         showingWorkspaceDetail = false;
         pendingWorkspaceStartName = null;
+        pendingWorkspaceProxyName = null;
         selectedTemplate = null;
         selectedWorkspace = null;
         resetViewReferences();
-        setContentView(buildHomeContent());
+        setPageContent(buildHomeContent());
         if (PortalStore.isSignedIn(this)) {
             loadPortalHome(PortalStore.organizationId(this));
         }
@@ -236,7 +243,7 @@ public final class MainActivity extends Activity {
         showingTemplates = false;
         showingWorkspaceDetail = false;
         resetViewReferences();
-        setContentView(buildSettingsContent());
+        setPageContent(buildSettingsContent());
         refreshPeerId();
         refreshPermissionStatus();
         refreshProxyStatus();
@@ -257,14 +264,13 @@ public final class MainActivity extends Activity {
         selectedTemplate = null;
         templatesPage = Math.max(1, page);
         resetViewReferences();
-        setContentView(buildTemplatesContent());
+        setPageContent(buildTemplatesContent());
         loadTemplates(templatesPage);
     }
 
     private void resetViewReferences() {
         if (workspaceCodexClient != null) {
-            workspaceCodexClient.close();
-            workspaceCodexClient = null;
+            workspaceCodexClient.detach();
         }
         peerIdText = null;
         permissionStatusText = null;
@@ -301,6 +307,38 @@ public final class MainActivity extends Activity {
             stepTabButtons[index] = null;
             stepPanels[index] = null;
         }
+    }
+
+    private void setPageContent(View page) {
+        FrameLayout host = new FrameLayout(this);
+        host.addView(page, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (!showingWorkspaceDetail && workspaceCodexClient != null
+                && codexWorkspace != null && PortalStore.isSignedIn(this)) {
+            ImageButton codex = new ImageButton(this);
+            codex.setImageResource(R.drawable.ic_codex_chat);
+            codex.setColorFilter(Color.WHITE);
+            codex.setContentDescription(getString(R.string.workspace_codex_open));
+            codex.setPadding(dp(14), dp(14), dp(14), dp(14));
+            codex.setBackground(roundRect(color(R.color.edgez_blue), 99));
+            codex.setOnClickListener(view -> showWorkspaceDetail(codexWorkspace));
+            codex.setElevation(dp(12));
+            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                    dp(54), dp(54),
+                    Gravity.END | Gravity.BOTTOM);
+            params.setMargins(dp(16), dp(16), dp(16), dp(20));
+            host.addView(codex, params);
+        }
+        setContentView(host);
+    }
+
+    private void closeGlobalCodexChat() {
+        if (workspaceCodexClient != null) {
+            workspaceCodexClient.close();
+            workspaceCodexClient = null;
+        }
+        codexWorkspace = null;
+        codexWorkspaceName = null;
     }
 
     private View buildHomeContent() {
@@ -483,7 +521,7 @@ public final class MainActivity extends Activity {
     private void openTemplateDetail(JSONObject template) {
         selectedTemplate = template;
         resetViewReferences();
-        setContentView(buildTemplateDetailContent(template));
+        setPageContent(buildTemplateDetailContent(template));
         runTask(getString(R.string.template_detail_loading), () -> {
             JSONObject response = PortalStore.loadTemplate(this,
                     template.optString("id", ""), PortalStore.organizationId(this));
@@ -878,6 +916,15 @@ public final class MainActivity extends Activity {
         for (int index = 0; index < workspaces.length(); index++) {
             JSONObject workspace = workspaces.optJSONObject(index);
             if (workspace != null) {
+                try {
+                    // The home response nests workspaces under their project, while the
+                    // workspace lifecycle response calls this same value `zoneId`.
+                    // Normalize it here so opening either representation selects the
+                    // correct project-scoped libp2p identity.
+                    workspace.put("zoneId", project.optString("id", ""));
+                } catch (JSONException ignored) {
+                    // JSONObject backed by the API response is mutable in normal use.
+                }
                 content.addView(workspaceCard(workspace), margins(0, 12, 0, 0));
             }
         }
@@ -920,13 +967,66 @@ public final class MainActivity extends Activity {
 
     private void showWorkspaceDetail(JSONObject workspace) {
         if (workspace == null) return;
+        String workspaceName = workspace.optString("name", "");
+        if (workspaceCodexClient != null && codexWorkspaceName != null
+                && !codexWorkspaceName.equals(workspaceName)) {
+            closeGlobalCodexChat();
+        }
+        String projectId = workspaceProjectId(workspace);
+        if (!projectId.isEmpty() && !projectId.equals(PortalStore.projectId(this))) {
+            if (workspaceIsRunning(workspace)) {
+                // Keep the service alive so its project-aware start command can
+                // atomically replace the old native client with this zone's client.
+                PortalStore.setProjectId(this, projectId);
+            } else {
+                setSelectedProject(projectId);
+            }
+        }
         showingSettings = false;
         showingTemplates = false;
         showingWorkspaceDetail = true;
         selectedWorkspace = workspace;
         resetViewReferences();
         setContentView(buildWorkspaceDetailContent(workspace));
+        ensureProxyForRunningWorkspace(workspace);
         refreshWorkspaceDetail();
+    }
+
+    private String workspaceProjectId(JSONObject workspace) {
+        if (workspace == null) return "";
+        String projectId = workspace.optString("zoneId", "").trim();
+        return projectId.isEmpty()
+                ? workspace.optString("projectId", "").trim() : projectId;
+    }
+
+    private boolean workspaceIsRunning(JSONObject workspace) {
+        String state = workspaceState(workspace);
+        return workspace.optBoolean("ready", false)
+                || "running".equals(state) || "starting".equals(state);
+    }
+
+    private void ensureProxyForRunningWorkspace(JSONObject workspace) {
+        if (!showingWorkspaceDetail || !workspaceIsRunning(workspace)) return;
+        String name = workspace.optString("name", "");
+        String projectId = workspaceProjectId(workspace);
+        if (projectId.isEmpty()) {
+            projectId = PortalStore.projectId(this);
+        } else if (!projectId.equals(PortalStore.projectId(this))) {
+            setSelectedProject(projectId);
+        }
+        if (projectId.isEmpty() || !ConfigStore.isConfigured(this, projectId)) {
+            showWorkspaceError(getString(R.string.status_join_before_proxy));
+            return;
+        }
+        if (!isWirelessDebugEnabled()) {
+            pendingWorkspaceProxyName = name;
+            openWirelessDebugging();
+            return;
+        }
+        pendingWorkspaceProxyName = null;
+        if (!ProxyService.isRunningForProject(projectId)) {
+            ProxyService.start(this, projectId);
+        }
     }
 
     private View buildWorkspaceDetailContent(JSONObject workspace) {
@@ -976,6 +1076,9 @@ public final class MainActivity extends Activity {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 selectedCodexModelIndex = position;
+                if (workspaceCodexClient != null) {
+                    workspaceCodexClient.setModelPosition(position);
+                }
             }
 
             @Override
@@ -1002,7 +1105,15 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(66), Gravity.TOP));
 
         if (workspace.optBoolean("ready", false)) {
-            root.post(() -> connectWorkspaceCodex(workspace, chatTarget, modelSelector));
+            if (workspaceCodexClient != null
+                    && workspace.optString("name", "").equals(codexWorkspaceName)) {
+                root.post(() -> {
+                    workspaceCodexClient.setModelPosition(selectedCodexModelIndex);
+                    workspaceCodexClient.attachTo(chatTarget);
+                });
+            } else {
+                root.post(() -> connectWorkspaceCodex(workspace, chatTarget, modelSelector));
+            }
         }
         return root;
     }
@@ -1028,6 +1139,8 @@ public final class MainActivity extends Activity {
                             || !name.equals(selectedWorkspace.optString("name", ""))) return;
                     workspaceCodexClient = CodexChatDialog.attach(
                             this, target, connection, modelSelector);
+                    codexWorkspace = workspace;
+                    codexWorkspaceName = name;
                 });
             } catch (Throwable throwable) {
                 runOnUiThread(() -> {
@@ -1054,8 +1167,10 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     if (!showingWorkspaceDetail) return;
                     selectedWorkspace = workspace;
+                    if (name.equals(codexWorkspaceName)) codexWorkspace = workspace;
                     resetViewReferences();
                     setContentView(buildWorkspaceDetailContent(workspace));
+                    ensureProxyForRunningWorkspace(workspace);
                 });
             } catch (Throwable throwable) {
                 runOnUiThread(() -> showWorkspaceError(safeMessage(throwable)));
@@ -1079,6 +1194,7 @@ public final class MainActivity extends Activity {
         if (name.isEmpty()) return;
         if (!start) {
             pendingWorkspaceStartName = null;
+            if (name.equals(codexWorkspaceName)) closeGlobalCodexChat();
             ProxyService.stop(this);
             changeWorkspaceState(false, false);
             return;
@@ -1109,6 +1225,18 @@ public final class MainActivity extends Activity {
         }
         if (isWirelessDebugEnabled()) {
             requestWorkspaceStateChange(true);
+        }
+    }
+
+    private void resumePendingWorkspaceProxy() {
+        String pendingName = pendingWorkspaceProxyName;
+        if (pendingName == null || !showingWorkspaceDetail || selectedWorkspace == null) return;
+        if (!pendingName.equals(selectedWorkspace.optString("name", ""))) {
+            pendingWorkspaceProxyName = null;
+            return;
+        }
+        if (isWirelessDebugEnabled()) {
+            ensureProxyForRunningWorkspace(selectedWorkspace);
         }
     }
 
@@ -1145,6 +1273,7 @@ public final class MainActivity extends Activity {
                     dismissWorkspaceProgress();
                     if (!showingWorkspaceDetail) return;
                     selectedWorkspace = result;
+                    if (name.equals(codexWorkspaceName)) codexWorkspace = result;
                     resetViewReferences();
                     setContentView(buildWorkspaceDetailContent(result));
                 });
@@ -1641,6 +1770,7 @@ public final class MainActivity extends Activity {
     private void signOut() {
         dismissAccountPopup();
         dismissProjectSelectionDialog();
+        closeGlobalCodexChat();
         stopProxyForProjectChange();
         PortalStore.signOut(this);
         organizations = new JSONArray();
