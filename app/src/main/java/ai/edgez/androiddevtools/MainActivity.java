@@ -28,12 +28,15 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.ArrayAdapter;
 import android.widget.AdapterView;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -74,6 +77,7 @@ public final class MainActivity extends Activity {
     private AlertDialog wirelessDebugDialog;
     private AlertDialog projectSelectionDialog;
     private AlertDialog projectCreationDialog;
+    private AlertDialog workspaceProgressDialog;
     private PopupWindow accountPopup;
     private final Button[] homeTabButtons = new Button[2];
     private final View[] homeTabPanels = new View[2];
@@ -94,21 +98,33 @@ public final class MainActivity extends Activity {
     private LinearLayout projectContent;
     private LinearLayout templatesContent;
     private LinearLayout templateDetailContent;
+    private LinearLayout workspaceChatContainer;
     private EditText workspaceNameInput;
     private Spinner workspaceSizeSpinner;
     private Spinner templateProjectSpinner;
     private Button templateDeployButton;
+    private Spinner repositoryModeSpinner;
+    private Spinner githubInstallationSpinner;
+    private Spinner githubRepositorySpinner;
+    private EditText newRepositoryNameInput;
+    private CheckBox newRepositoryPrivateInput;
+    private LinearLayout existingRepositoryPanel;
+    private LinearLayout newRepositoryPanel;
     private JSONObject selectedTemplate;
+    private JSONObject selectedWorkspace;
     private JSONArray allowedWorkspaceSizes = new JSONArray();
     private int templatesPage = 1;
     private JSONArray organizations = new JSONArray();
     private JSONArray projects = new JSONArray();
     private JSONArray servers = new JSONArray();
+    private JSONArray githubInstallations = new JSONArray();
+    private JSONArray githubRepositories = new JSONArray();
     private boolean updatingPortalSelectors;
     private boolean loginSubmitting;
     private boolean receiverRegistered;
     private boolean showingSettings;
     private boolean showingTemplates;
+    private boolean showingWorkspaceDetail;
     private int selectedHomeTab;
     private int selectedStep;
 
@@ -167,6 +183,7 @@ public final class MainActivity extends Activity {
         dismissAccountPopup();
         dismissProjectSelectionDialog();
         dismissProjectCreationDialog();
+        dismissWorkspaceProgress();
         executor.shutdownNow();
         super.onDestroy();
     }
@@ -174,6 +191,11 @@ public final class MainActivity extends Activity {
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
+        if (showingWorkspaceDetail) {
+            selectedHomeTab = 1;
+            showHomePage();
+            return;
+        }
         if (showingTemplates && selectedTemplate != null) {
             showTemplatesPage(templatesPage);
             return;
@@ -191,7 +213,9 @@ public final class MainActivity extends Activity {
         dismissProjectCreationDialog();
         showingSettings = false;
         showingTemplates = false;
+        showingWorkspaceDetail = false;
         selectedTemplate = null;
+        selectedWorkspace = null;
         resetViewReferences();
         setContentView(buildHomeContent());
         if (PortalStore.isSignedIn(this)) {
@@ -205,6 +229,7 @@ public final class MainActivity extends Activity {
         dismissProjectCreationDialog();
         showingSettings = true;
         showingTemplates = false;
+        showingWorkspaceDetail = false;
         resetViewReferences();
         setContentView(buildSettingsContent());
         refreshPeerId();
@@ -223,6 +248,7 @@ public final class MainActivity extends Activity {
         dismissProjectSelectionDialog();
         showingSettings = false;
         showingTemplates = true;
+        showingWorkspaceDetail = false;
         selectedTemplate = null;
         templatesPage = Math.max(1, page);
         resetViewReferences();
@@ -246,10 +272,18 @@ public final class MainActivity extends Activity {
         projectContent = null;
         templatesContent = null;
         templateDetailContent = null;
+        workspaceChatContainer = null;
         workspaceNameInput = null;
         workspaceSizeSpinner = null;
         templateProjectSpinner = null;
         templateDeployButton = null;
+        repositoryModeSpinner = null;
+        githubInstallationSpinner = null;
+        githubRepositorySpinner = null;
+        newRepositoryNameInput = null;
+        newRepositoryPrivateInput = null;
+        existingRepositoryPanel = null;
+        newRepositoryPanel = null;
         for (int index = 0; index < homeTabButtons.length; index++) {
             homeTabButtons[index] = null;
             homeTabPanels[index] = null;
@@ -521,11 +555,14 @@ public final class MainActivity extends Activity {
         deploy.addView(templateProjectSpinner, margins(0, 3, 0, 0));
         deploy.addView(actionButton(R.string.create_project_button,
                 view -> showCreateProjectDialog(), false), margins(0, 8, 0, 0));
+
+        addGithubRepositoryFields(deploy);
         templateDeployButton = actionButton(R.string.template_deploy_button,
                 view -> confirmTemplateDeployment(), true);
         templateDeployButton.setEnabled(!sizes.isEmpty() && projects.length() > 0);
         deploy.addView(templateDeployButton, margins(0, 12, 0, 0));
         templateDetailContent.addView(deploy);
+        loadGithubRepositoriesForSelectedProject();
         showStatus(getString(R.string.template_detail_ready));
     }
 
@@ -568,6 +605,12 @@ public final class MainActivity extends Activity {
             showStatus(getString(R.string.template_deploy_invalid));
             return;
         }
+        if ((repositoryMode() == 1 && selectedRepositoryId().equals("0"))
+                || (repositoryMode() == 2 && newRepositoryName().isEmpty())
+                || (repositoryMode() != 0 && selectedInstallationId().isEmpty())) {
+            showStatus(getString(R.string.github_repository_required));
+            return;
+        }
         runTask(getString(R.string.template_deploying), () -> {
             String deviceName = Build.MANUFACTURER + " " + Build.MODEL;
             String devicePeerId = "";
@@ -577,7 +620,9 @@ public final class MainActivity extends Activity {
             JSONObject result = PortalStore.deployTemplate(this,
                     PortalStore.organizationId(this), PortalStore.projectId(this),
                     selectedTemplate.optString("id", ""), name, size,
-                    devicePeerId, deviceName);
+                    devicePeerId, deviceName, selectedInstallationId(),
+                    selectedRepositoryId(), newRepositoryName(),
+                    newRepositoryPrivateInput == null || newRepositoryPrivateInput.isChecked());
             JSONObject deviceConfig = result.optJSONObject("deviceConfig");
             if (deviceConfig != null) {
                 ConfigStore.saveProjectConfig(this, deviceConfig, deviceName);
@@ -588,6 +633,57 @@ public final class MainActivity extends Activity {
                             result.optString("name", name)))
                     .setPositiveButton(android.R.string.ok, (dialog, which) -> showHomePage())
                     .show());
+        });
+    }
+
+    private void addGithubRepositoryFields(LinearLayout deploy) {
+        deploy.addView(text(getString(R.string.github_repository_label), 12,
+                color(R.color.edgez_text_muted)), margins(0, 14, 0, 0));
+        repositoryModeSpinner = portalSpinner();
+        repositoryModeSpinner.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item,
+                List.of(getString(R.string.github_repository_none),
+                        getString(R.string.github_repository_existing),
+                        getString(R.string.github_repository_new))));
+        deploy.addView(repositoryModeSpinner, margins(0, 3, 0, 0));
+
+        githubInstallationSpinner = portalSpinner();
+        deploy.addView(githubInstallationSpinner, margins(0, 8, 0, 0));
+        githubInstallationSpinner.setVisibility(View.GONE);
+
+        existingRepositoryPanel = new LinearLayout(this);
+        existingRepositoryPanel.setOrientation(LinearLayout.VERTICAL);
+        githubRepositorySpinner = portalSpinner();
+        existingRepositoryPanel.addView(githubRepositorySpinner);
+        existingRepositoryPanel.setVisibility(View.GONE);
+        deploy.addView(existingRepositoryPanel, margins(0, 8, 0, 0));
+
+        newRepositoryPanel = new LinearLayout(this);
+        newRepositoryPanel.setOrientation(LinearLayout.VERTICAL);
+        newRepositoryNameInput = new EditText(this);
+        newRepositoryNameInput.setHint(R.string.github_repository_name_hint);
+        newRepositoryNameInput.setSingleLine(true);
+        newRepositoryNameInput.setPadding(dp(12), dp(10), dp(12), dp(10));
+        newRepositoryNameInput.setBackground(roundRect(color(R.color.edgez_blue_soft), 12));
+        newRepositoryPanel.addView(newRepositoryNameInput);
+        newRepositoryPrivateInput = new CheckBox(this);
+        newRepositoryPrivateInput.setText(R.string.github_repository_private);
+        newRepositoryPrivateInput.setChecked(true);
+        newRepositoryPanel.addView(newRepositoryPrivateInput, margins(0, 6, 0, 0));
+        newRepositoryPanel.setVisibility(View.GONE);
+        deploy.addView(newRepositoryPanel, margins(0, 8, 0, 0));
+
+        repositoryModeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                boolean connected = githubInstallations.length() > 0;
+                githubInstallationSpinner.setVisibility(position == 0 ? View.GONE : View.VISIBLE);
+                existingRepositoryPanel.setVisibility(position == 1 ? View.VISIBLE : View.GONE);
+                newRepositoryPanel.setVisibility(position == 2 ? View.VISIBLE : View.GONE);
+                if (position != 0 && !connected) {
+                    showStatus(getString(R.string.github_repository_not_connected));
+                }
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
     }
 
@@ -607,10 +703,110 @@ public final class MainActivity extends Activity {
         if (projects.length() > 0) {
             templateProjectSpinner.setSelection(selected >= 0 ? selected : 0, false);
         }
+        templateProjectSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                loadGithubRepositoriesForSelectedProject();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
         if (templateDeployButton != null) {
             templateDeployButton.setEnabled(projects.length() > 0
                     && allowedWorkspaceSizes.length() > 0);
         }
+    }
+
+    private void loadGithubRepositoriesForSelectedProject() {
+        if (templateProjectSpinner == null || githubInstallationSpinner == null) return;
+        JSONObject project = projects.optJSONObject(templateProjectSpinner.getSelectedItemPosition());
+        if (project == null) return;
+        executor.execute(() -> {
+            try {
+                JSONObject response = PortalStore.loadGithubRepositories(this,
+                        PortalStore.organizationId(this), project.optString("id", ""));
+                runOnUiThread(() -> applyGithubRepositories(response));
+            } catch (Throwable throwable) {
+                runOnUiThread(() -> {
+                    githubInstallations = new JSONArray();
+                    githubRepositories = new JSONArray();
+                    applyGithubRepositoryAdapters();
+                    showStatus(getString(R.string.status_error, safeMessage(throwable)));
+                });
+            }
+        });
+    }
+
+    private void applyGithubRepositories(JSONObject response) {
+        githubInstallations = response.optJSONArray("installations");
+        if (githubInstallations == null) githubInstallations = new JSONArray();
+        githubRepositories = new JSONArray();
+        JSONArray groups = response.optJSONArray("repositoriesByInstallation");
+        if (groups != null) {
+            for (int groupIndex = 0; groupIndex < groups.length(); groupIndex++) {
+                JSONObject group = groups.optJSONObject(groupIndex);
+                if (group == null) continue;
+                JSONObject installation = group.optJSONObject("installation");
+                JSONArray repositories = group.optJSONArray("repositories");
+                if (installation == null || repositories == null) continue;
+                for (int index = 0; index < repositories.length(); index++) {
+                    JSONObject repository = repositories.optJSONObject(index);
+                    if (repository != null) {
+                        try {
+                            JSONObject option = new JSONObject(repository.toString());
+                            option.put("installationId", installation.optString("id", ""));
+                            githubRepositories.put(option);
+                        } catch (JSONException ignored) { }
+                    }
+                }
+            }
+        }
+        applyGithubRepositoryAdapters();
+    }
+
+    private void applyGithubRepositoryAdapters() {
+        if (githubInstallationSpinner == null || githubRepositorySpinner == null) return;
+        List<String> installationLabels = new ArrayList<>();
+        for (int index = 0; index < githubInstallations.length(); index++) {
+            JSONObject installation = githubInstallations.optJSONObject(index);
+            if (installation != null) installationLabels.add(
+                    installation.optString("organization", "GitHub"));
+        }
+        githubInstallationSpinner.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, installationLabels));
+        List<String> repositoryLabels = new ArrayList<>();
+        for (int index = 0; index < githubRepositories.length(); index++) {
+            JSONObject repository = githubRepositories.optJSONObject(index);
+            if (repository != null) repositoryLabels.add(repository.optString("fullName", "Repository"));
+        }
+        githubRepositorySpinner.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, repositoryLabels));
+    }
+
+    private int repositoryMode() {
+        return repositoryModeSpinner == null ? 0 : repositoryModeSpinner.getSelectedItemPosition();
+    }
+
+    private String selectedInstallationId() {
+        if (repositoryMode() == 1) {
+            JSONObject repository = githubRepositories.optJSONObject(
+                    githubRepositorySpinner == null ? -1 : githubRepositorySpinner.getSelectedItemPosition());
+            return repository == null ? "" : repository.optString("installationId", "");
+        }
+        JSONObject installation = githubInstallations.optJSONObject(
+                githubInstallationSpinner == null ? -1 : githubInstallationSpinner.getSelectedItemPosition());
+        return repositoryMode() == 2 && installation != null
+                ? installation.optString("id", "") : "";
+    }
+
+    private String selectedRepositoryId() {
+        if (repositoryMode() != 1) return "";
+        JSONObject repository = githubRepositories.optJSONObject(
+                githubRepositorySpinner == null ? -1 : githubRepositorySpinner.getSelectedItemPosition());
+        return repository == null ? "" : String.valueOf(repository.optLong("id", 0));
+    }
+
+    private String newRepositoryName() {
+        return repositoryMode() == 2 && newRepositoryNameInput != null
+                ? newRepositoryNameInput.getText().toString().trim() : "";
     }
 
     private void addProjectTabs(LinearLayout content, JSONObject project) {
@@ -665,8 +861,6 @@ public final class MainActivity extends Activity {
     private void addProjectWorkspaces(LinearLayout content, JSONObject project) {
         content.addView(cardTitle(R.string.workspaces_title));
         content.addView(description(R.string.workspaces_description), margins(0, 4, 0, 14));
-        content.addView(actionButton(R.string.create_project_button,
-                view -> showCreateProjectDialog(), false), margins(0, 0, 0, 8));
         JSONArray workspaces = project.optJSONArray("workspaces");
         if (workspaces == null || workspaces.length() == 0) {
             content.addView(description(R.string.no_workspaces));
@@ -682,15 +876,272 @@ public final class MainActivity extends Activity {
 
     private View workspaceCard(JSONObject workspace) {
         LinearLayout card = card();
+        card.setClickable(true);
+        card.setFocusable(true);
+        card.setOnClickListener(view -> showWorkspaceDetail(workspace));
         TextView title = text(workspace.optString("name", getString(R.string.workspace_title)),
                 16, color(R.color.edgez_text));
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        card.addView(title);
+        LinearLayout heading = new LinearLayout(this);
+        heading.setOrientation(LinearLayout.HORIZONTAL);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        heading.addView(title, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         String state = workspace.optString("desiredState", "stopped");
+        TextView status = text(state, 11, workspaceStateColor(state));
+        status.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        status.setPadding(dp(10), dp(5), dp(10), dp(5));
+        status.setBackground(roundRect(color(R.color.edgez_blue_soft), 12));
+        heading.addView(status);
+        card.addView(heading);
         String repository = workspace.optString("githubRepositoryFullName", "");
-        card.addView(text(state + (repository.isEmpty() ? "" : " · " + repository),
+        card.addView(text((repository.isEmpty() ? getString(R.string.workspace_no_repository)
+                        : repository) + "  ›",
                 12, color(R.color.edgez_text_muted)), margins(0, 4, 0, 0));
         return card;
+    }
+
+    private int workspaceStateColor(String state) {
+        if ("running".equals(state)) return color(R.color.edgez_success);
+        if ("starting".equals(state) || "stopping".equals(state)) {
+            return color(R.color.edgez_connecting);
+        }
+        return color(R.color.edgez_text_muted);
+    }
+
+    private void showWorkspaceDetail(JSONObject workspace) {
+        if (workspace == null) return;
+        showingSettings = false;
+        showingTemplates = false;
+        showingWorkspaceDetail = true;
+        selectedWorkspace = workspace;
+        resetViewReferences();
+        setContentView(buildWorkspaceDetailContent(workspace));
+        refreshWorkspaceDetail();
+    }
+
+    private View buildWorkspaceDetailContent(JSONObject workspace) {
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(color(R.color.edgez_background));
+        LinearLayout content = pageContent();
+        content.setPadding(dp(16), dp(82), dp(16), dp(24));
+
+        workspaceChatContainer = new LinearLayout(this);
+        workspaceChatContainer.setOrientation(LinearLayout.VERTICAL);
+        workspaceChatContainer.setGravity(Gravity.CENTER_VERTICAL);
+        if (workspace.optBoolean("ready", false)) {
+            Button talk = actionButton(R.string.workspace_talk_codex,
+                    view -> openWorkspaceCodex(workspace, (Button) view), true);
+            workspaceChatContainer.addView(talk);
+        } else {
+            Button unavailable = actionButton(R.string.workspace_codex_requires_start,
+                    view -> { }, false);
+            unavailable.setEnabled(false);
+            unavailable.setAlpha(0.55f);
+            workspaceChatContainer.addView(unavailable);
+        }
+        content.addView(workspaceChatContainer);
+        root.addView(content, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        Button back = compactLightButton(R.string.back_to_apps, view -> {
+            selectedHomeTab = 1;
+            showHomePage();
+        });
+        back.setElevation(dp(8));
+        FrameLayout.LayoutParams backParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(46), Gravity.TOP | Gravity.START);
+        backParams.setMargins(dp(16), dp(14), 0, 0);
+        root.addView(back, backParams);
+
+        String state = workspaceState(workspace);
+        boolean running = workspace.optBoolean("ready", false)
+                || "running".equals(state) || "starting".equals(state);
+        Button lifecycle = actionButton(running ? R.string.workspace_stop
+                        : R.string.workspace_start,
+                view -> changeWorkspaceState(!running), true);
+        lifecycle.setEnabled(!"starting".equals(state) && !"stopping".equals(state));
+        lifecycle.setAlpha(lifecycle.isEnabled() ? 1f : 0.55f);
+        lifecycle.setElevation(dp(8));
+        FrameLayout.LayoutParams lifecycleParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(46), Gravity.TOP | Gravity.END);
+        lifecycleParams.setMargins(0, dp(14), dp(16), 0);
+        root.addView(lifecycle, lifecycleParams);
+        return root;
+    }
+
+    private String workspaceState(JSONObject workspace) {
+        if (workspace.optBoolean("ready", false)) return "running";
+        String pending = workspace.optString("pending", "");
+        if ("spawn".equals(pending)) return "starting";
+        if ("stop".equals(pending)) return "stopping";
+        return workspace.optString("desiredState", "stopped");
+    }
+
+    private void openWorkspaceCodex(JSONObject workspace, Button trigger) {
+        trigger.setEnabled(false);
+        trigger.setText(R.string.workspace_codex_loading);
+        String name = workspace.optString("name", "");
+        executor.execute(() -> {
+            try {
+                JSONObject connection = PortalStore.loadWorkspaceCodexConnection(this,
+                        PortalStore.organizationId(this), name);
+                runOnUiThread(() -> {
+                    if (!showingWorkspaceDetail) return;
+                    trigger.setEnabled(true);
+                    trigger.setText(R.string.workspace_talk_codex);
+                    CodexChatDialog.show(this, connection);
+                });
+            } catch (Throwable throwable) {
+                runOnUiThread(() -> {
+                    trigger.setEnabled(true);
+                    trigger.setText(R.string.workspace_talk_codex);
+                    showWorkspaceError(getString(
+                            R.string.workspace_codex_failed, safeMessage(throwable)));
+                });
+            }
+        });
+    }
+
+    private void refreshWorkspaceDetail() {
+        String name = selectedWorkspace == null ? "" : selectedWorkspace.optString("name", "");
+        if (name.isEmpty()) return;
+        executor.execute(() -> {
+            try {
+                JSONObject response = PortalStore.loadWorkspaces(this,
+                        PortalStore.organizationId(this));
+                JSONObject workspace = findWorkspace(response.optJSONArray("workspaces"), name);
+                if (workspace == null) throw new IllegalStateException("Workspace not found");
+                runOnUiThread(() -> {
+                    if (!showingWorkspaceDetail) return;
+                    selectedWorkspace = workspace;
+                    resetViewReferences();
+                    setContentView(buildWorkspaceDetailContent(workspace));
+                });
+            } catch (Throwable throwable) {
+                runOnUiThread(() -> showWorkspaceError(safeMessage(throwable)));
+            }
+        });
+    }
+
+    private JSONObject findWorkspace(JSONArray candidates, String name) {
+        if (candidates == null) return null;
+        for (int index = 0; index < candidates.length(); index++) {
+            JSONObject candidate = candidates.optJSONObject(index);
+            if (candidate != null && name.equals(candidate.optString("name", ""))) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private void changeWorkspaceState(boolean start) {
+        String name = selectedWorkspace == null ? "" : selectedWorkspace.optString("name", "");
+        if (name.isEmpty()) return;
+        TextView progressMessage = showWorkspaceProgress(
+                start ? R.string.workspace_starting : R.string.workspace_stopping,
+                start ? R.string.workspace_start_progress : R.string.workspace_stop_progress);
+        executor.execute(() -> {
+            try {
+                PortalStore.changeWorkspaceState(this, PortalStore.organizationId(this), name, start);
+                JSONObject current = null;
+                for (int attempt = 0; attempt < 150; attempt++) {
+                    JSONObject response = PortalStore.loadWorkspaces(this,
+                            PortalStore.organizationId(this));
+                    current = findWorkspace(response.optJSONArray("workspaces"), name);
+                    if (current == null) throw new IllegalStateException("Workspace not found");
+                    String state = workspaceState(current);
+                    int elapsed = attempt * 2;
+                    runOnUiThread(() -> progressMessage.setText(getString(
+                            R.string.workspace_progress_state, state, elapsed)));
+                    boolean complete = start ? current.optBoolean("ready", false)
+                            : "stopped".equals(state);
+                    if (complete) break;
+                    Thread.sleep(2_000);
+                }
+                if (current == null || (start && !current.optBoolean("ready", false))
+                        || (!start && !"stopped".equals(workspaceState(current)))) {
+                    throw new IllegalStateException(getString(R.string.workspace_progress_timeout));
+                }
+                JSONObject result = current;
+                runOnUiThread(() -> {
+                    dismissWorkspaceProgress();
+                    if (!showingWorkspaceDetail) return;
+                    selectedWorkspace = result;
+                    resetViewReferences();
+                    setContentView(buildWorkspaceDetailContent(result));
+                });
+            } catch (Throwable throwable) {
+                runOnUiThread(() -> {
+                    dismissWorkspaceProgress();
+                    showWorkspaceError(safeMessage(throwable));
+                });
+            }
+        });
+    }
+
+    private TextView showWorkspaceProgress(int titleLabel, int messageLabel) {
+        dismissWorkspaceProgress();
+        LinearLayout panel = verticalPanel(18, roundRect(color(R.color.edgez_surface), 18));
+        ProgressBar progress = new ProgressBar(this);
+        panel.addView(progress, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        TextView message = text(getString(messageLabel), 14, color(R.color.edgez_text_muted));
+        panel.addView(message, margins(0, 10, 0, 0));
+        workspaceProgressDialog = new AlertDialog.Builder(this)
+                .setTitle(titleLabel)
+                .setView(panel)
+                .setCancelable(false)
+                .create();
+        workspaceProgressDialog.setCanceledOnTouchOutside(false);
+        workspaceProgressDialog.show();
+        return message;
+    }
+
+    private void dismissWorkspaceProgress() {
+        if (workspaceProgressDialog != null) {
+            workspaceProgressDialog.dismiss();
+            workspaceProgressDialog = null;
+        }
+    }
+
+    private void confirmDeleteWorkspace() {
+        if (selectedWorkspace == null) return;
+        String name = selectedWorkspace.optString("name", "");
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.workspace_delete_confirm_title)
+                .setMessage(getString(R.string.workspace_delete_confirm, name))
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.workspace_delete, (dialog, which) -> deleteWorkspace(name))
+                .show();
+    }
+
+    private void deleteWorkspace(String name) {
+        showWorkspaceProgress(R.string.workspace_deleting, R.string.workspace_delete_progress);
+        executor.execute(() -> {
+            try {
+                PortalStore.deleteWorkspace(this, PortalStore.organizationId(this), name);
+                runOnUiThread(() -> {
+                    dismissWorkspaceProgress();
+                    selectedHomeTab = 1;
+                    showHomePage();
+                });
+            } catch (Throwable throwable) {
+                runOnUiThread(() -> {
+                    dismissWorkspaceProgress();
+                    showWorkspaceError(safeMessage(throwable));
+                });
+            }
+        });
+    }
+
+    private void showWorkspaceError(String message) {
+        if (isFinishing() || isDestroyed()) return;
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.workspace_action_failed)
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
     }
 
     private TextView statusLabel(String value) {
@@ -1057,6 +1508,8 @@ public final class MainActivity extends Activity {
         panel.addView(scopeSelectorPanel(organization, project));
         panel.addView(actionButton(R.string.create_project_button,
                 view -> showCreateProjectDialog(), false), margins(0, 12, 0, 0));
+        panel.addView(actionButton(R.string.create_workspace_button,
+                view -> showTemplatesPage(1), false), margins(0, 8, 0, 0));
         panel.addView(actionButton(R.string.templates_button, view -> showTemplatesPage(), false),
                 margins(0, 8, 0, 0));
         panel.addView(actionButton(R.string.settings_button, view -> showSettingsPage(), false),

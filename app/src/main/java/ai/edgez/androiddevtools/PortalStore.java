@@ -139,6 +139,52 @@ final class PortalStore {
         return request("GET", endpoint, accessToken(context), null);
     }
 
+    static JSONObject loadGithubRepositories(
+            Context context, String organizationId, String projectId)
+            throws IOException, JSONException {
+        String endpoint = BASE_URL + "/api/mobile/github/repositories?organizationId="
+                + URLEncoder.encode(organizationId, StandardCharsets.UTF_8.name())
+                + "&projectId="
+                + URLEncoder.encode(projectId, StandardCharsets.UTF_8.name());
+        return request("GET", endpoint, accessToken(context), null);
+    }
+
+    static JSONObject loadWorkspaces(Context context, String organizationId)
+            throws IOException, JSONException {
+        String endpoint = BASE_URL + "/api/jupyterhub/workspaces?organizationId="
+                + URLEncoder.encode(organizationId, StandardCharsets.UTF_8.name());
+        return request("GET", endpoint, accessToken(context), null);
+    }
+
+    static JSONObject changeWorkspaceState(
+            Context context, String organizationId, String name, boolean start)
+            throws IOException, JSONException {
+        JSONObject body = new JSONObject();
+        body.put("organizationId", organizationId);
+        body.put("name", name);
+        return request(start ? "PUT" : "PATCH", BASE_URL + "/api/jupyterhub/workspaces",
+                accessToken(context), body);
+    }
+
+    static JSONObject deleteWorkspace(Context context, String organizationId, String name)
+            throws IOException, JSONException {
+        JSONObject body = new JSONObject();
+        body.put("organizationId", organizationId);
+        body.put("name", name);
+        return request("DELETE", BASE_URL + "/api/jupyterhub/workspaces",
+                accessToken(context), body);
+    }
+
+    static JSONObject loadWorkspaceCodexConnection(
+            Context context, String organizationId, String name)
+            throws IOException, JSONException {
+        String endpoint = BASE_URL + "/api/mobile/workspaces/"
+                + URLEncoder.encode(name, StandardCharsets.UTF_8.name())
+                + "/codex?organizationId="
+                + URLEncoder.encode(organizationId, StandardCharsets.UTF_8.name());
+        return request("GET", endpoint, accessToken(context), null);
+    }
+
     static JSONObject createProject(
             Context context, String organizationId, String name, int serverId)
             throws IOException, JSONException {
@@ -158,7 +204,11 @@ final class PortalStore {
             String name,
             String workspaceSize,
             String devicePeerId,
-            String deviceName) throws IOException, JSONException {
+            String deviceName,
+            String installationId,
+            String repositoryId,
+            String newRepositoryName,
+            boolean newRepositoryPrivate) throws IOException, JSONException {
         JSONObject body = new JSONObject();
         body.put("organizationId", organizationId);
         body.put("projectId", projectId);
@@ -167,6 +217,10 @@ final class PortalStore {
         body.put("workspaceSize", workspaceSize);
         body.put("devicePeerId", devicePeerId);
         body.put("deviceName", deviceName);
+        body.put("installationId", installationId);
+        body.put("repositoryId", repositoryId);
+        body.put("newRepositoryName", newRepositoryName);
+        body.put("newRepositoryPrivate", newRepositoryPrivate);
         return request("POST", BASE_URL + "/api/mobile/templates/deploy",
                 accessToken(context), body);
     }
@@ -176,7 +230,11 @@ final class PortalStore {
             throws IOException, JSONException {
         HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
         connection.setConnectTimeout(15_000);
-        connection.setReadTimeout(25_000);
+        // Workspace start/stop follows the web flow and can wait for JupyterHub to
+        // finish spawning or stopping the named server before returning.
+        boolean workspaceLifecycle = ("PUT".equals(method) || "PATCH".equals(method))
+                && endpoint.endsWith("/api/jupyterhub/workspaces");
+        connection.setReadTimeout(workspaceLifecycle ? 300_000 : 25_000);
         connection.setRequestMethod(method);
         connection.setRequestProperty("Accept", "application/json");
         if (accessToken != null && !accessToken.isEmpty()) {

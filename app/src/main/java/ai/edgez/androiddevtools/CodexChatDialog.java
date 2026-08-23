@@ -1,0 +1,523 @@
+package ai.edgez.androiddevtools;
+
+import android.app.Activity;
+import android.app.Dialog;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.PopupWindow;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
+
+final class CodexChatDialog {
+    private static final int INITIALIZE_ID = 1;
+    private static final int THREAD_LIST_ID = 2;
+    private static final int THREAD_START_ID = 3;
+    private static final int THREAD_RESUME_ID = 4;
+    private static final int THREAD_READ_ID = 5;
+
+    private final Activity activity;
+    private final JSONObject connection;
+    private final OkHttpClient client;
+    private final Dialog dialog;
+    private final FrameLayout root;
+    private final LinearLayout messages;
+    private final ScrollView messageScroll;
+    private final EditText input;
+    private final Button send;
+    private final Button conversations;
+    private final TextView connectionStatus;
+    private final Map<String, JSONObject> threads = new LinkedHashMap<>();
+    private WebSocket socket;
+    private PopupWindow conversationDrawer;
+    private String threadId;
+    private String pendingPrompt;
+    private TextView streamingAgentMessage;
+    private int nextRequestId = 10;
+
+    static void show(Activity activity, JSONObject connection) {
+        new CodexChatDialog(activity, connection).open();
+    }
+
+    private CodexChatDialog(Activity activity, JSONObject connection) {
+        this.activity = activity;
+        this.connection = connection;
+        client = new OkHttpClient.Builder()
+                .pingInterval(20, TimeUnit.SECONDS)
+                .readTimeout(0, TimeUnit.MILLISECONDS)
+                .build();
+        dialog = new Dialog(activity,
+                android.R.style.Theme_DeviceDefault_Light_NoActionBar_Fullscreen);
+        root = new FrameLayout(activity);
+        root.setBackgroundColor(color(R.color.edgez_background));
+
+        LinearLayout page = new LinearLayout(activity);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(12), dp(64), dp(12), dp(10));
+        root.addView(page, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        connectionStatus = text(activity.getString(R.string.workspace_codex_connecting),
+                12, color(R.color.edgez_text_muted));
+        connectionStatus.setGravity(Gravity.CENTER);
+        page.addView(connectionStatus, margins(0, 0, 0, 8));
+
+        messages = new LinearLayout(activity);
+        messages.setOrientation(LinearLayout.VERTICAL);
+        messages.setPadding(dp(2), dp(4), dp(2), dp(8));
+        messageScroll = new ScrollView(activity);
+        messageScroll.setFillViewport(true);
+        messageScroll.addView(messages);
+        page.addView(messageScroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        LinearLayout composer = new LinearLayout(activity);
+        composer.setOrientation(LinearLayout.HORIZONTAL);
+        composer.setGravity(Gravity.BOTTOM);
+        composer.setPadding(dp(8), dp(6), dp(6), dp(6));
+        composer.setBackground(roundRect(Color.WHITE, 18));
+        input = new EditText(activity);
+        input.setHint(R.string.workspace_codex_input_hint);
+        input.setTextSize(15);
+        input.setMinHeight(dp(46));
+        input.setMaxLines(5);
+        input.setBackgroundColor(Color.TRANSPARENT);
+        input.setImeOptions(EditorInfo.IME_ACTION_SEND);
+        input.setEnabled(false);
+        input.setOnEditorActionListener((view, actionId, event) -> {
+            if (actionId != EditorInfo.IME_ACTION_SEND) return false;
+            sendPrompt();
+            return true;
+        });
+        composer.addView(input, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        send = button(R.string.workspace_codex_send, true, view -> sendPrompt());
+        send.setEnabled(false);
+        composer.addView(send, new LinearLayout.LayoutParams(dp(76), dp(46)));
+        page.addView(composer);
+
+        Button close = button(R.string.workspace_codex_close, false, view -> dialog.dismiss());
+        close.setElevation(dp(8));
+        FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(44), Gravity.TOP | Gravity.START);
+        closeParams.setMargins(dp(12), dp(10), 0, 0);
+        root.addView(close, closeParams);
+
+        conversations = button(R.string.workspace_codex_conversations, false,
+                view -> showConversationDrawer());
+        conversations.setEnabled(false);
+        conversations.setElevation(dp(8));
+        FrameLayout.LayoutParams conversationParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(44), Gravity.TOP | Gravity.END);
+        conversationParams.setMargins(0, dp(10), dp(12), 0);
+        root.addView(conversations, conversationParams);
+
+        dialog.setContentView(root);
+        dialog.setOnDismissListener(ignored -> close());
+    }
+
+    private void open() {
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT);
+        }
+        String url = connection.optString("webSocketUrl", "");
+        String token = connection.optString("token", "");
+        if (url.isEmpty() || token.isEmpty()) {
+            fail(activity.getString(R.string.workspace_codex_invalid_connection));
+            return;
+        }
+        Request request = new Request.Builder()
+                .url(url)
+                .header("Authorization", "token " + token)
+                .build();
+        socket = client.newWebSocket(request, new Listener());
+    }
+
+    private void close() {
+        if (conversationDrawer != null) conversationDrawer.dismiss();
+        if (socket != null) socket.close(1000, "Mobile Codex chat closed");
+        socket = null;
+        client.dispatcher().executorService().shutdown();
+    }
+
+    private void initialize() throws JSONException {
+        JSONObject clientInfo = new JSONObject()
+                .put("name", "edgez_android_devtools")
+                .put("title", "EdgeZ Android DevTools")
+                .put("version", "1.0.0");
+        sendRequest(INITIALIZE_ID, "initialize",
+                new JSONObject().put("clientInfo", clientInfo));
+    }
+
+    private void initialized() throws JSONException {
+        sendJson(new JSONObject().put("method", "initialized"));
+        sendRequest(THREAD_LIST_ID, "thread/list", new JSONObject()
+                .put("cursor", JSONObject.NULL)
+                .put("limit", 50)
+                .put("cwd", new JSONArray().put("/home/jovyan/workspace"))
+                .put("sortKey", "updated_at"));
+        activity.runOnUiThread(() -> {
+            connectionStatus.setText(R.string.workspace_codex_connected);
+            input.setEnabled(true);
+            send.setEnabled(true);
+            conversations.setEnabled(true);
+        });
+    }
+
+    private void sendPrompt() {
+        String prompt = input.getText().toString().trim();
+        if (prompt.isEmpty() || socket == null) return;
+        input.setText("");
+        addMessage(prompt, true);
+        send.setEnabled(false);
+        try {
+            if (threadId == null) {
+                pendingPrompt = prompt;
+                startThread();
+                return;
+            }
+            startTurn(prompt);
+        } catch (JSONException error) {
+            fail(error.getMessage());
+        }
+    }
+
+    private void startThread() throws JSONException {
+        sendRequest(THREAD_START_ID, "thread/start", new JSONObject()
+                .put("cwd", "/home/jovyan/workspace"));
+    }
+
+    private void resumeThread(String id) {
+        threadId = id;
+        messages.removeAllViews();
+        streamingAgentMessage = null;
+        try {
+            sendRequest(THREAD_RESUME_ID, "thread/resume",
+                    new JSONObject().put("threadId", id));
+        } catch (JSONException error) {
+            fail(error.getMessage());
+        }
+    }
+
+    private void readThread() throws JSONException {
+        sendRequest(THREAD_READ_ID, "thread/read", new JSONObject()
+                .put("threadId", threadId)
+                .put("includeTurns", true));
+    }
+
+    private void startTurn(String prompt) throws JSONException {
+        JSONArray content = new JSONArray().put(new JSONObject()
+                .put("type", "text")
+                .put("text", prompt));
+        sendRequest(nextRequestId++, "turn/start", new JSONObject()
+                .put("threadId", threadId)
+                .put("input", content));
+    }
+
+    private void handle(JSONObject message) throws JSONException {
+        if (message.has("id") && message.has("method")) {
+            resolveServerRequest(message);
+            return;
+        }
+        if (message.has("id")) {
+            int id = message.optInt("id", -1);
+            JSONObject error = message.optJSONObject("error");
+            if (error != null) {
+                fail(error.optString("message", "Codex request failed"));
+                return;
+            }
+            JSONObject result = message.optJSONObject("result");
+            if (id == INITIALIZE_ID) initialized();
+            else if (id == THREAD_LIST_ID) applyThreadList(result);
+            else if (id == THREAD_START_ID) applyStartedThread(result);
+            else if (id == THREAD_RESUME_ID) readThread();
+            else if (id == THREAD_READ_ID) renderThread(result);
+            return;
+        }
+
+        String method = message.optString("method", "");
+        JSONObject params = message.optJSONObject("params");
+        if ("item/agentMessage/delta".equals(method) && params != null) {
+            appendAgentDelta(params.optString("delta", ""));
+        } else if ("item/completed".equals(method) && params != null) {
+            JSONObject item = params.optJSONObject("item");
+            if (item != null && "agentMessage".equals(item.optString("type", ""))
+                    && streamingAgentMessage == null) {
+                addMessage(item.optString("text", ""), false);
+            }
+        } else if ("turn/completed".equals(method)) {
+            activity.runOnUiThread(() -> {
+                streamingAgentMessage = null;
+                send.setEnabled(true);
+                loadThreads();
+            });
+        }
+    }
+
+    private void resolveServerRequest(JSONObject request) throws JSONException {
+        String method = request.optString("method", "");
+        JSONObject result;
+        if (method.contains("requestApproval")) {
+            result = new JSONObject().put("decision", "decline");
+        } else if ("item/tool/requestUserInput".equals(method)) {
+            result = new JSONObject().put("action", "cancel").put("content", JSONObject.NULL);
+        } else {
+            result = new JSONObject();
+        }
+        sendJson(new JSONObject().put("id", request.get("id")).put("result", result));
+    }
+
+    private void applyThreadList(JSONObject result) {
+        JSONArray data = result == null ? null : result.optJSONArray("data");
+        threads.clear();
+        if (data != null) {
+            for (int index = 0; index < data.length(); index++) {
+                JSONObject thread = data.optJSONObject(index);
+                if (thread != null) threads.put(thread.optString("id", ""), thread);
+            }
+        }
+        activity.runOnUiThread(() -> conversations.setEnabled(true));
+    }
+
+    private void applyStartedThread(JSONObject result) throws JSONException {
+        JSONObject thread = result == null ? null : result.optJSONObject("thread");
+        threadId = thread == null ? null : thread.optString("id", null);
+        if (threadId == null) throw new JSONException("Codex did not return a conversation ID");
+        String prompt = pendingPrompt;
+        pendingPrompt = null;
+        if (prompt != null) startTurn(prompt);
+    }
+
+    private void renderThread(JSONObject result) {
+        JSONObject thread = result == null ? null : result.optJSONObject("thread");
+        JSONArray turns = thread == null ? null : thread.optJSONArray("turns");
+        activity.runOnUiThread(() -> {
+            messages.removeAllViews();
+            if (turns != null) {
+                for (int turnIndex = 0; turnIndex < turns.length(); turnIndex++) {
+                    JSONObject turn = turns.optJSONObject(turnIndex);
+                    JSONArray items = turn == null ? null : turn.optJSONArray("items");
+                    if (items == null) continue;
+                    for (int itemIndex = 0; itemIndex < items.length(); itemIndex++) {
+                        JSONObject item = items.optJSONObject(itemIndex);
+                        if (item == null) continue;
+                        String type = item.optString("type", "");
+                        if ("agentMessage".equals(type)) {
+                            addMessage(item.optString("text", ""), false);
+                        } else if ("userMessage".equals(type)) {
+                            JSONArray content = item.optJSONArray("content");
+                            if (content == null) continue;
+                            for (int contentIndex = 0; contentIndex < content.length(); contentIndex++) {
+                                JSONObject value = content.optJSONObject(contentIndex);
+                                if (value != null && "text".equals(value.optString("type", ""))) {
+                                    addMessage(value.optString("text", ""), true);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            send.setEnabled(true);
+        });
+    }
+
+    private void appendAgentDelta(String delta) {
+        if (delta.isEmpty()) return;
+        activity.runOnUiThread(() -> {
+            if (streamingAgentMessage == null) {
+                streamingAgentMessage = addMessage("", false);
+            }
+            streamingAgentMessage.append(delta);
+            scrollToBottom();
+        });
+    }
+
+    private TextView addMessage(String value, boolean mine) {
+        TextView bubble = text(value, 15, mine ? Color.WHITE : color(R.color.edgez_text));
+        bubble.setTextIsSelectable(true);
+        bubble.setPadding(dp(13), dp(10), dp(13), dp(10));
+        bubble.setBackground(roundRect(mine ? color(R.color.edgez_blue) : Color.WHITE, 16));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.gravity = mine ? Gravity.END : Gravity.START;
+        params.setMargins(mine ? dp(44) : 0, dp(4), mine ? 0 : dp(44), dp(4));
+        messages.addView(bubble, params);
+        scrollToBottom();
+        return bubble;
+    }
+
+    private void showConversationDrawer() {
+        LinearLayout panel = new LinearLayout(activity);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(14), dp(20), dp(14), dp(20));
+        panel.setBackgroundColor(Color.WHITE);
+        TextView heading = text(activity.getString(R.string.workspace_codex_conversations),
+                19, color(R.color.edgez_text));
+        heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        panel.addView(heading, margins(0, 0, 0, 12));
+        panel.addView(button(R.string.workspace_codex_new_conversation, true, view -> {
+            threadId = null;
+            pendingPrompt = null;
+            messages.removeAllViews();
+            streamingAgentMessage = null;
+            if (conversationDrawer != null) conversationDrawer.dismiss();
+        }), margins(0, 0, 0, 10));
+        for (Map.Entry<String, JSONObject> entry : threads.entrySet()) {
+            String preview = entry.getValue().optString("preview",
+                    activity.getString(R.string.workspace_codex_untitled));
+            Button item = button(preview.isEmpty()
+                    ? activity.getString(R.string.workspace_codex_untitled) : preview,
+                    false, view -> {
+                        resumeThread(entry.getKey());
+                        if (conversationDrawer != null) conversationDrawer.dismiss();
+                    });
+            item.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+            panel.addView(item, margins(0, 3, 0, 3));
+        }
+        ScrollView drawerScroll = new ScrollView(activity);
+        drawerScroll.addView(panel);
+        conversationDrawer = new PopupWindow(drawerScroll, dp(310),
+                ViewGroup.LayoutParams.MATCH_PARENT, true);
+        conversationDrawer.setBackgroundDrawable(new ColorDrawable(Color.WHITE));
+        conversationDrawer.setOutsideTouchable(true);
+        conversationDrawer.setElevation(dp(14));
+        conversationDrawer.showAtLocation(root, Gravity.END, 0, 0);
+    }
+
+    private void loadThreads() {
+        try {
+            sendRequest(THREAD_LIST_ID, "thread/list", new JSONObject()
+                    .put("cursor", JSONObject.NULL)
+                    .put("limit", 50)
+                    .put("cwd", new JSONArray().put("/home/jovyan/workspace"))
+                    .put("sortKey", "updated_at"));
+        } catch (JSONException ignored) {
+        }
+    }
+
+    private void sendRequest(int id, String method, JSONObject params) throws JSONException {
+        sendJson(new JSONObject().put("id", id).put("method", method).put("params", params));
+    }
+
+    private void sendJson(JSONObject message) {
+        WebSocket current = socket;
+        if (current != null) current.send(message.toString());
+    }
+
+    private void fail(String message) {
+        activity.runOnUiThread(() -> {
+            connectionStatus.setText(activity.getString(
+                    R.string.workspace_codex_connection_failed,
+                    message == null ? "Unknown error" : message));
+            connectionStatus.setTextColor(color(R.color.edgez_error));
+            input.setEnabled(false);
+            send.setEnabled(false);
+        });
+    }
+
+    private void scrollToBottom() {
+        messageScroll.post(() -> messageScroll.fullScroll(View.FOCUS_DOWN));
+    }
+
+    private Button button(int label, boolean primary, View.OnClickListener listener) {
+        return button(activity.getString(label), primary, listener);
+    }
+
+    private Button button(String label, boolean primary, View.OnClickListener listener) {
+        Button button = new Button(activity);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTextSize(13);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setTextColor(primary ? Color.WHITE : color(R.color.edgez_blue));
+        button.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+                primary ? color(R.color.edgez_blue) : color(R.color.edgez_blue_soft)));
+        button.setOnClickListener(listener);
+        button.setMinWidth(0);
+        button.setPadding(dp(12), 0, dp(12), 0);
+        return button;
+    }
+
+    private TextView text(String value, int size, int textColor) {
+        TextView view = new TextView(activity);
+        view.setText(value);
+        view.setTextSize(size);
+        view.setTextColor(textColor);
+        return view;
+    }
+
+    private LinearLayout.LayoutParams margins(int left, int top, int right, int bottom) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMargins(dp(left), dp(top), dp(right), dp(bottom));
+        return params;
+    }
+
+    private GradientDrawable roundRect(int fill, int radius) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(fill);
+        drawable.setCornerRadius(dp(radius));
+        return drawable;
+    }
+
+    private int color(int id) {
+        return activity.getColor(id);
+    }
+
+    private int dp(int value) {
+        return Math.round(value * activity.getResources().getDisplayMetrics().density);
+    }
+
+    private final class Listener extends WebSocketListener {
+        @Override
+        public void onOpen(WebSocket webSocket, Response response) {
+            try {
+                initialize();
+            } catch (JSONException error) {
+                fail(error.getMessage());
+            }
+        }
+
+        @Override
+        public void onMessage(WebSocket webSocket, String text) {
+            try {
+                handle(new JSONObject(text));
+            } catch (JSONException error) {
+                fail(error.getMessage());
+            }
+        }
+
+        @Override
+        public void onFailure(WebSocket webSocket, Throwable throwable, Response response) {
+            String detail = throwable.getMessage();
+            if (response != null) detail = "HTTP " + response.code() + ": " + detail;
+            fail(detail);
+        }
+    }
+}
