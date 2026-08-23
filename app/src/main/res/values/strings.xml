@@ -147,6 +147,7 @@
     <string name="expo_projects_title">Expo projects</string>
     <string name="expo_projects_description">Browse recent projects and discover development servers.</string>
     <string name="app_badge_embedded">EMBEDDED · OFFLINE</string>
+    <string name="app_badge_installed">INSTALLED · OFFLINE</string>
     <string name="app_badge_remote">REMOTE · METRO</string>
     <string name="app_badge_projects">PROJECT LIBRARY</string>
     <string name="home_status_ready">Ready. Embedded apps do not require Metro; remote bundles use the Expo project runtime.</string>
@@ -214,6 +215,8 @@
     <string name="status_proxy_start">Proxy start requested. Check the persistent notification for status.</string>
     <string name="status_opening_expo">Opening http://127.0.0.1:8081 in the bundled Expo SDK 57 development runtime.</string>
     <string name="status_opening_demo">Opening the embedded off-grid map demo.</string>
+    <string name="status_opening_installed_app">Opening %1$s in the embedded Expo runtime.</string>
+    <string name="installed_app_description">ADB-installed JavaScript bundle.</string>
     <string name="status_opening_projects">Opening the Expo project library.</string>
     <string name="status_expo_unavailable">No Expo runtime is installed in this build.</string>
     <string name="status_all_permissions">All required permissions are granted.</string>

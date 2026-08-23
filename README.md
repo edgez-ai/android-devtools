@@ -137,6 +137,42 @@ and stop with the proxy.
 The application ID is `ai.edgez.androiddevtools.runtime`. No separate Expo Go
 installation is required.
 
+## Install an offline JavaScript bundle over ADB
+
+A debuggable DevTools build accepts JavaScript-only apps through an ADB
+contract. Each app consists of a bundle and a small JSON manifest stored in
+DevTools private storage. Android DevTools remains the native launcher; an
+installed app appears as a tile in its Apps grid and starts only when tapped.
+
+Given `example.android.bundle` and this `example.json` manifest:
+
+```json
+{"schemaVersion":1,"id":"example","name":"Example","description":"Offline example","icon":"EX","bundle":"example.android.bundle"}
+```
+
+install it with:
+
+```sh
+adb push example.android.bundle /data/local/tmp/example.android.bundle
+adb shell run-as ai.edgez.androiddevtools.runtime mkdir -p files/edgez-devtools/bundles
+adb shell run-as ai.edgez.androiddevtools.runtime mkdir -p files/edgez-devtools/apps
+adb shell run-as ai.edgez.androiddevtools.runtime cp /data/local/tmp/example.android.bundle files/edgez-devtools/bundles/example.android.bundle
+adb push example.json /data/local/tmp/example.json
+adb shell run-as ai.edgez.androiddevtools.runtime cp /data/local/tmp/example.json files/edgez-devtools/apps/example.json
+adb shell am start -n ai.edgez.androiddevtools.runtime/ai.edgez.androiddevtools.MainActivity \
+  -a ai.edgez.androiddevtools.action.REFRESH_APPS
+adb shell rm -f /data/local/tmp/example.android.bundle
+adb shell rm -f /data/local/tmp/example.json
+```
+
+The catalog validates manifest IDs, field lengths, bundle basenames, and
+canonical private-storage paths. The embedded activity is not exported.
+The refresh intent rebuilds the native Apps grid without force-stopping
+DevTools, because its proxy may be carrying the ADB connection itself.
+`run-as` requires a debuggable installation. Bundles may use native modules
+already compiled into DevTools; new native modules or packaged image/font
+resources require an APK rebuild.
+
 ## BLE
 
 `react-native-ble-plx` is autolinked into the development client. Metro-loaded

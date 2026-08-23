@@ -3,6 +3,7 @@ package ai.edgez.androiddevtools;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
@@ -51,17 +52,33 @@ import org.json.JSONException;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Pattern;
 
 public final class MainActivity extends Activity {
     private static final int PERMISSION_REQUEST = 10;
     private static final String EXTRA_PROMPT_WIRELESS_DEBUG =
             "ai.edgez.androiddevtools.extra.PROMPT_WIRELESS_DEBUG";
+    private static final String ACTION_REFRESH_APPS =
+            "ai.edgez.androiddevtools.action.REFRESH_APPS";
+    private static final String EXTRA_EMBEDDED_BUNDLE_NAME =
+            "ai.edgez.androiddevtools.extra.EMBEDDED_BUNDLE_NAME";
+    private static final String INSTALLED_APP_DIRECTORY = "edgez-devtools/apps";
+    private static final String INSTALLED_BUNDLE_DIRECTORY = "edgez-devtools/bundles";
+    private static final Pattern APP_ID_PATTERN = Pattern.compile("[a-z0-9._-]+");
+    private static final Pattern BUNDLE_NAME_PATTERN =
+            Pattern.compile("[A-Za-z0-9._-]+[.]android[.]bundle");
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final BroadcastReceiver proxyStatusReceiver = new BroadcastReceiver() {
         @Override
@@ -184,6 +201,7 @@ public final class MainActivity extends Activity {
         setIntent(intent);
         handleAuthIntent(intent);
         maybeShowWirelessDebugDialog(consumeWirelessDebugPrompt());
+        if (ACTION_REFRESH_APPS.equals(intent.getAction())) showHomePage();
     }
 
     @Override
@@ -913,6 +931,72 @@ public final class MainActivity extends Activity {
         View spacer = new View(this);
         secondRow.addView(spacer, gridTileMargins(6, 0));
         content.addView(secondRow, margins(0, 12, 0, 0));
+
+        addInstalledApps(content);
+    }
+
+    private void addInstalledApps(LinearLayout content) {
+        List<JSONObject> apps = installedApps();
+        for (int index = 0; index < apps.size(); index += 2) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            for (int column = 0; column < 2; column++) {
+                int appIndex = index + column;
+                if (appIndex >= apps.size()) {
+                    row.addView(new View(this), gridTileMargins(column == 0 ? 0 : 6,
+                            column == 0 ? 6 : 0));
+                    continue;
+                }
+                JSONObject app = apps.get(appIndex);
+                String bundleName = app.optString("bundle");
+                String displayName = app.optString("name");
+                row.addView(appTile(
+                        app.optString("icon", "APP"),
+                        displayName,
+                        app.optString("description", getString(R.string.installed_app_description)),
+                        getString(R.string.app_badge_installed),
+                        view -> openInstalledBundle(bundleName, displayName)),
+                        gridTileMargins(column == 0 ? 0 : 6, column == 0 ? 6 : 0));
+            }
+            content.addView(row, margins(0, 12, 0, 0));
+        }
+    }
+
+    private List<JSONObject> installedApps() {
+        List<JSONObject> apps = new ArrayList<>();
+        File manifestDirectory = new File(getFilesDir(), INSTALLED_APP_DIRECTORY);
+        File bundleDirectory;
+        try {
+            bundleDirectory = new File(getFilesDir(), INSTALLED_BUNDLE_DIRECTORY).getCanonicalFile();
+        } catch (IOException exception) {
+            return apps;
+        }
+        File[] manifests = manifestDirectory.listFiles(file ->
+                file.isFile() && file.getName().endsWith(".json") && file.length() <= 64 * 1024);
+        if (manifests == null) return apps;
+        Arrays.sort(manifests, Comparator.comparing(File::getName));
+        for (File manifest : manifests) {
+            try {
+                JSONObject app = new JSONObject(new String(
+                        Files.readAllBytes(manifest.toPath()), StandardCharsets.UTF_8));
+                String id = app.optString("id", "");
+                String name = app.optString("name", "").trim();
+                String description = app.optString("description", "");
+                String bundleName = app.optString("bundle", "");
+                String icon = app.optString("icon", "APP").trim();
+                if (app.optInt("schemaVersion", 0) != 1
+                        || !APP_ID_PATTERN.matcher(id).matches()
+                        || name.isEmpty() || name.length() > 48
+                        || description.length() > 120
+                        || icon.isEmpty() || icon.length() > 4
+                        || !BUNDLE_NAME_PATTERN.matcher(bundleName).matches()) continue;
+                File bundle = new File(bundleDirectory, bundleName).getCanonicalFile();
+                if (!bundleDirectory.equals(bundle.getParentFile())
+                        || !bundle.isFile() || !bundle.canRead() || bundle.length() == 0) continue;
+                apps.add(app);
+            } catch (IOException | JSONException ignored) { }
+        }
+        return apps;
     }
 
     private void addProjectWorkspaces(LinearLayout content, JSONObject project) {
@@ -1973,6 +2057,12 @@ public final class MainActivity extends Activity {
 
     private View appTile(String icon, int titleLabel, int descriptionLabel, int badgeLabel,
             View.OnClickListener listener) {
+        return appTile(icon, getString(titleLabel), getString(descriptionLabel),
+                getString(badgeLabel), listener);
+    }
+
+    private View appTile(String icon, String title, String description, String badge,
+            View.OnClickListener listener) {
         LinearLayout tile = verticalPanel(14, roundRect(color(R.color.edgez_surface), 18));
         tile.setClickable(true);
         tile.setFocusable(true);
@@ -1982,16 +2072,16 @@ public final class MainActivity extends Activity {
         iconView.setGravity(Gravity.CENTER);
         iconView.setBackground(roundRect(color(R.color.edgez_blue), 14));
         tile.addView(iconView, new LinearLayout.LayoutParams(dp(54), dp(54)));
-        TextView title = text(getString(titleLabel), 16, color(R.color.edgez_text));
-        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        tile.addView(title, margins(0, 12, 0, 0));
-        TextView description = text(getString(descriptionLabel), 12,
+        TextView titleView = text(title, 16, color(R.color.edgez_text));
+        titleView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        tile.addView(titleView, margins(0, 12, 0, 0));
+        TextView descriptionView = text(description, 12,
                 color(R.color.edgez_text_muted));
-        description.setMinHeight(dp(54));
-        tile.addView(description, margins(0, 5, 0, 8));
-        TextView badge = text(getString(badgeLabel), 11, color(R.color.edgez_blue));
-        badge.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        tile.addView(badge);
+        descriptionView.setMinHeight(dp(54));
+        tile.addView(descriptionView, margins(0, 5, 0, 8));
+        TextView badgeView = text(badge, 11, color(R.color.edgez_blue));
+        badgeView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        tile.addView(badgeView);
         return tile;
     }
 
@@ -2025,16 +2115,43 @@ public final class MainActivity extends Activity {
     }
 
     private void openEmbeddedDemo() {
-        try {
-            Intent intent = new Intent()
-                    .setClassName(getPackageName(),
-                            "ai.edgez.androiddevtools.runtime.EmbeddedBundleActivity")
-                    .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-            startActivity(intent);
-            showStatus(getString(R.string.status_opening_demo));
-        } catch (ActivityNotFoundException exception) {
-            showStatus(getString(R.string.status_expo_unavailable));
+        openEmbeddedBundle(null, getString(R.string.status_opening_demo));
+    }
+
+    private void openInstalledBundle(String bundleName, String displayName) {
+        openEmbeddedBundle(bundleName,
+                getString(R.string.status_opening_installed_app, displayName));
+    }
+
+    private void openEmbeddedBundle(String bundleName, String status) {
+        Intent intent = new Intent()
+                .setClassName(getPackageName(),
+                        "ai.edgez.androiddevtools.runtime.EmbeddedBundleActivity")
+                .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        if (bundleName != null) intent.putExtra(EXTRA_EMBEDDED_BUNDLE_NAME, bundleName);
+
+        boolean killedEmbeddedProcess = false;
+        ActivityManager manager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+        if (manager != null) {
+            List<ActivityManager.RunningAppProcessInfo> processes = manager.getRunningAppProcesses();
+            if (processes != null) {
+                for (ActivityManager.RunningAppProcessInfo process : processes) {
+                    if ((getPackageName() + ":embedded").equals(process.processName)) {
+                        android.os.Process.killProcess(process.pid);
+                        killedEmbeddedProcess = true;
+                    }
+                }
+            }
         }
+        long delay = killedEmbeddedProcess ? 150L : 0L;
+        getWindow().getDecorView().postDelayed(() -> {
+            try {
+                startActivity(intent);
+                showStatus(status);
+            } catch (ActivityNotFoundException exception) {
+                showStatus(getString(R.string.status_expo_unavailable));
+            }
+        }, delay);
     }
 
     private void openExpoLauncher() {
