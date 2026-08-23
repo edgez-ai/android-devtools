@@ -10,6 +10,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
+import android.text.method.LinkMovementMethod;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -27,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import io.noties.markwon.Markwon;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -48,6 +50,7 @@ final class CodexChatDialog {
     private final Activity activity;
     private final JSONObject connection;
     private final OkHttpClient client;
+    private final Markwon markwon;
     private final FrameLayout root;
     private final LinearLayout messages;
     private final ScrollView messageScroll;
@@ -61,6 +64,7 @@ final class CodexChatDialog {
     private String threadId;
     private String pendingPrompt;
     private TextView streamingAgentMessage;
+    private StringBuilder streamingAgentMarkdown;
     private volatile String activeModel;
     private int nextRequestId = 10;
     private boolean closed;
@@ -88,6 +92,7 @@ final class CodexChatDialog {
                 .pingInterval(20, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.MILLISECONDS)
                 .build();
+        markwon = Markwon.create(activity);
         root = new GestureFrameLayout(activity);
         root.setBackgroundColor(color(R.color.edgez_background));
 
@@ -213,6 +218,7 @@ final class CodexChatDialog {
         threadId = id;
         messages.removeAllViews();
         streamingAgentMessage = null;
+        streamingAgentMarkdown = null;
         try {
             sendRequest(THREAD_RESUME_ID, "thread/resume",
                     new JSONObject().put("threadId", id));
@@ -272,13 +278,21 @@ final class CodexChatDialog {
             appendAgentDelta(params.optString("delta", ""));
         } else if ("item/completed".equals(method) && params != null) {
             JSONObject item = params.optJSONObject("item");
-            if (item != null && "agentMessage".equals(item.optString("type", ""))
-                    && streamingAgentMessage == null) {
-                addMessage(item.optString("text", ""), false);
+            if (item != null && "agentMessage".equals(item.optString("type", ""))) {
+                String completedMarkdown = item.optString("text", "");
+                activity.runOnUiThread(() -> {
+                    if (streamingAgentMessage == null) {
+                        addMessage(completedMarkdown, false);
+                    } else if (!completedMarkdown.isEmpty()) {
+                        streamingAgentMarkdown = new StringBuilder(completedMarkdown);
+                        renderMarkdown(streamingAgentMessage, completedMarkdown);
+                    }
+                });
             }
         } else if ("turn/completed".equals(method)) {
             activity.runOnUiThread(() -> {
                 streamingAgentMessage = null;
+                streamingAgentMarkdown = null;
                 send.setEnabled(true);
                 loadThreads();
             });
@@ -353,6 +367,8 @@ final class CodexChatDialog {
         JSONArray turns = thread == null ? null : thread.optJSONArray("turns");
         activity.runOnUiThread(() -> {
             messages.removeAllViews();
+            streamingAgentMessage = null;
+            streamingAgentMarkdown = null;
             if (turns != null) {
                 for (int turnIndex = 0; turnIndex < turns.length(); turnIndex++) {
                     JSONObject turn = turns.optJSONObject(turnIndex);
@@ -386,8 +402,10 @@ final class CodexChatDialog {
         activity.runOnUiThread(() -> {
             if (streamingAgentMessage == null) {
                 streamingAgentMessage = addMessage("", false);
+                streamingAgentMarkdown = new StringBuilder();
             }
-            streamingAgentMessage.append(delta);
+            streamingAgentMarkdown.append(delta);
+            renderMarkdown(streamingAgentMessage, streamingAgentMarkdown.toString());
             scrollToBottom();
         });
     }
@@ -395,6 +413,7 @@ final class CodexChatDialog {
     private TextView addMessage(String value, boolean mine) {
         TextView bubble = text(value, 15, mine ? Color.WHITE : color(R.color.edgez_text));
         bubble.setTextIsSelectable(true);
+        bubble.setMovementMethod(LinkMovementMethod.getInstance());
         bubble.setPadding(dp(13), dp(10), dp(13), dp(10));
         bubble.setBackground(roundRect(mine ? color(R.color.edgez_blue) : Color.WHITE, 16));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
@@ -402,8 +421,13 @@ final class CodexChatDialog {
         params.gravity = mine ? Gravity.END : Gravity.START;
         params.setMargins(mine ? dp(44) : 0, dp(4), mine ? 0 : dp(44), dp(4));
         messages.addView(bubble, params);
+        renderMarkdown(bubble, value);
         scrollToBottom();
         return bubble;
+    }
+
+    private void renderMarkdown(TextView view, String markdown) {
+        markwon.setMarkdown(view, markdown == null ? "" : markdown);
     }
 
     private void showConversationDrawer() {
@@ -420,6 +444,7 @@ final class CodexChatDialog {
             pendingPrompt = null;
             messages.removeAllViews();
             streamingAgentMessage = null;
+            streamingAgentMarkdown = null;
             if (conversationDrawer != null) conversationDrawer.dismiss();
         }), margins(0, 0, 0, 10));
         for (Map.Entry<String, JSONObject> entry : threads.entrySet()) {

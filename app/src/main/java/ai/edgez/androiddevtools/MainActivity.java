@@ -113,6 +113,7 @@ public final class MainActivity extends Activity {
     private LinearLayout newRepositoryPanel;
     private JSONObject selectedTemplate;
     private JSONObject selectedWorkspace;
+    private String pendingWorkspaceStartName;
     private JSONArray allowedWorkspaceSizes = new JSONArray();
     private int templatesPage = 1;
     private JSONArray organizations = new JSONArray();
@@ -166,6 +167,7 @@ public final class MainActivity extends Activity {
         boolean promptRequested = consumeWirelessDebugPrompt();
         maybeShowWirelessDebugDialog(promptRequested
                 || (showingSettings && !isWirelessDebugEnabled()));
+        resumePendingWorkspaceStart();
     }
 
     @Override
@@ -216,6 +218,7 @@ public final class MainActivity extends Activity {
         showingSettings = false;
         showingTemplates = false;
         showingWorkspaceDetail = false;
+        pendingWorkspaceStartName = null;
         selectedTemplate = null;
         selectedWorkspace = null;
         resetViewReferences();
@@ -989,7 +992,7 @@ public final class MainActivity extends Activity {
                 || "running".equals(state) || "starting".equals(state);
         Button lifecycle = actionButton(running ? R.string.workspace_stop
                         : R.string.workspace_start,
-                view -> changeWorkspaceState(!running), true);
+                view -> requestWorkspaceStateChange(!running), true);
         lifecycle.setEnabled(!"starting".equals(state) && !"stopping".equals(state));
         lifecycle.setAlpha(lifecycle.isEnabled() ? 1f : 0.55f);
         lifecycle.setElevation(dp(8));
@@ -1071,7 +1074,45 @@ public final class MainActivity extends Activity {
         return null;
     }
 
-    private void changeWorkspaceState(boolean start) {
+    private void requestWorkspaceStateChange(boolean start) {
+        String name = selectedWorkspace == null ? "" : selectedWorkspace.optString("name", "");
+        if (name.isEmpty()) return;
+        if (!start) {
+            pendingWorkspaceStartName = null;
+            ProxyService.stop(this);
+            changeWorkspaceState(false, false);
+            return;
+        }
+        if (!ConfigStore.isConfigured(this)) {
+            showWorkspaceError(getString(R.string.status_join_before_proxy));
+            return;
+        }
+        if (!isWirelessDebugEnabled()) {
+            pendingWorkspaceStartName = name;
+            openWirelessDebugging();
+            return;
+        }
+        pendingWorkspaceStartName = null;
+        boolean proxyStartedHere = !ProxyService.isRunning();
+        if (proxyStartedHere) {
+            ProxyService.start(this);
+        }
+        changeWorkspaceState(true, proxyStartedHere);
+    }
+
+    private void resumePendingWorkspaceStart() {
+        String pendingName = pendingWorkspaceStartName;
+        if (pendingName == null || !showingWorkspaceDetail || selectedWorkspace == null) return;
+        if (!pendingName.equals(selectedWorkspace.optString("name", ""))) {
+            pendingWorkspaceStartName = null;
+            return;
+        }
+        if (isWirelessDebugEnabled()) {
+            requestWorkspaceStateChange(true);
+        }
+    }
+
+    private void changeWorkspaceState(boolean start, boolean proxyStartedHere) {
         String name = selectedWorkspace == null ? "" : selectedWorkspace.optString("name", "");
         if (name.isEmpty()) return;
         TextView progressMessage = showWorkspaceProgress(
@@ -1110,6 +1151,9 @@ public final class MainActivity extends Activity {
             } catch (Throwable throwable) {
                 runOnUiThread(() -> {
                     dismissWorkspaceProgress();
+                    if (start && proxyStartedHere) {
+                        ProxyService.stop(this);
+                    }
                     showWorkspaceError(safeMessage(throwable));
                 });
             }
