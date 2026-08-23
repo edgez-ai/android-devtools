@@ -45,12 +45,12 @@ import org.json.JSONException;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.net.HttpURLConnection;
-import java.net.URL;
 
 public final class MainActivity extends Activity {
     private static final int PERMISSION_REQUEST = 10;
@@ -547,7 +547,7 @@ public final class MainActivity extends Activity {
             showCreateProjectDialog();
             return;
         }
-        PortalStore.setProjectId(this, project.optString("id", ""));
+        setSelectedProject(project.optString("id", ""));
         String message = selectedTemplate.optBoolean("mobileWorkspace")
                 ? getString(R.string.template_deploy_confirm_mobile)
                 : getString(R.string.template_deploy_confirm);
@@ -569,10 +569,19 @@ public final class MainActivity extends Activity {
             return;
         }
         runTask(getString(R.string.template_deploying), () -> {
+            String deviceName = Build.MANUFACTURER + " " + Build.MODEL;
+            String devicePeerId = "";
+            if (selectedTemplate.optBoolean("mobileWorkspace")) {
+                devicePeerId = ConfigStore.ensurePeerId(this, deviceName);
+            }
             JSONObject result = PortalStore.deployTemplate(this,
                     PortalStore.organizationId(this), PortalStore.projectId(this),
                     selectedTemplate.optString("id", ""), name, size,
-                    ConfigStore.storedSerial(this), ConfigStore.peerId(this));
+                    devicePeerId, deviceName);
+            JSONObject deviceConfig = result.optJSONObject("deviceConfig");
+            if (deviceConfig != null) {
+                ConfigStore.saveProjectConfig(this, deviceConfig, deviceName);
+            }
             runOnUiThread(() -> new AlertDialog.Builder(this)
                     .setTitle(R.string.template_deploy_success_title)
                     .setMessage(getString(R.string.template_deploy_success,
@@ -795,7 +804,7 @@ public final class MainActivity extends Activity {
             projectContent.addView(description(R.string.no_projects));
             projectContent.addView(actionButton(R.string.create_project_button,
                     view -> showCreateProjectDialog(), true));
-            PortalStore.setProjectId(this, "");
+            setSelectedProject("");
             showStatus(getString(R.string.no_projects));
         } else {
             int selected = projectIndex(PortalStore.projectId(this));
@@ -803,7 +812,7 @@ public final class MainActivity extends Activity {
                 renderSelectedProject(selected);
                 showStatus(getString(R.string.home_status_ready));
             } else {
-                PortalStore.setProjectId(this, "");
+                setSelectedProject("");
                 projectContent.removeAllViews();
                 projectContent.addView(description(R.string.choose_project_prompt));
                 showStatus(getString(R.string.choose_project_prompt));
@@ -876,6 +885,7 @@ public final class MainActivity extends Activity {
                 if (!nextId.isEmpty() && !nextId.equals(PortalStore.organizationId(MainActivity.this))) {
                     dismissAccountPopup();
                     dismissProjectSelectionDialog();
+                    stopProxyForProjectChange();
                     PortalStore.setOrganizationId(MainActivity.this, nextId);
                     if (projectContent != null) {
                         projectContent.removeAllViews();
@@ -1014,7 +1024,6 @@ public final class MainActivity extends Activity {
                     PortalStore.organizationId(this), name, serverId);
             runOnUiThread(() -> {
                 projects.put(project);
-                PortalStore.setProjectId(this, project.optString("id", ""));
                 if (projectContent != null) renderSelectedProject(projects.length() - 1);
                 configureTemplateProjectSpinner();
                 showStatus(getString(R.string.create_project_success,
@@ -1072,15 +1081,34 @@ public final class MainActivity extends Activity {
     private void renderSelectedProject(int position) {
         JSONObject project = projects.optJSONObject(position);
         if (project == null || projectContent == null) return;
+        String projectId = project.optString("id", "");
+        if (!projectId.equals(PortalStore.projectId(this))) {
+            stopProxyForProjectChange();
+        }
         PortalStore.setSelection(this, PortalStore.organizationId(this),
-                project.optString("id", ""));
+                projectId);
         projectContent.removeAllViews();
         addProjectTabs(projectContent, project);
+    }
+
+    private void setSelectedProject(String projectId) {
+        String safeProjectId = projectId == null ? "" : projectId.trim();
+        if (!safeProjectId.equals(PortalStore.projectId(this))) {
+            stopProxyForProjectChange();
+        }
+        PortalStore.setProjectId(this, safeProjectId);
+    }
+
+    private void stopProxyForProjectChange() {
+        if (ProxyService.isRunning()) {
+            ProxyService.stop(this);
+        }
     }
 
     private void signOut() {
         dismissAccountPopup();
         dismissProjectSelectionDialog();
+        stopProxyForProjectChange();
         PortalStore.signOut(this);
         organizations = new JSONArray();
         projects = new JSONArray();
@@ -1203,6 +1231,11 @@ public final class MainActivity extends Activity {
     private LinearLayout connectionCard() {
         LinearLayout connection = card();
         connection.addView(cardTitle(R.string.connection_status));
+        String selectedProjectId = PortalStore.projectId(this);
+        connection.addView(text(getString(R.string.project_identity_format,
+                selectedProjectId.isEmpty() ? getString(R.string.project_identity_none)
+                        : selectedProjectId), 12, color(R.color.edgez_text_muted)),
+                margins(0, 5, 0, 0));
         peerIdText = text(getString(R.string.peer_not_joined), 13, color(R.color.edgez_text_muted));
         peerIdText.setTextIsSelectable(true);
         connection.addView(peerIdText, margins(0, 6, 0, 14));
@@ -1409,6 +1442,10 @@ public final class MainActivity extends Activity {
     }
 
     private void joinNetwork(String serial, String joinKey) {
+        if (PortalStore.isSignedIn(this) && PortalStore.projectId(this).isEmpty()) {
+            showStatus(getString(R.string.status_choose_project_before_join));
+            return;
+        }
         runTask(getString(R.string.status_joining), () -> {
             String peerId = ConfigStore.join(this, ConfigStore.DEFAULT_JOIN_ENDPOINT, serial,
                     joinKey, Build.MANUFACTURER + " " + Build.MODEL);

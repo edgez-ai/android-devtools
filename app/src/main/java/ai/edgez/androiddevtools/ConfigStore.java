@@ -31,6 +31,12 @@ final class ConfigStore {
     private static final String KEY_SERIAL = "serial_number";
     private static final String KEY_ADB_HOST = "adb_proxy_host";
     private static final String KEY_ADB_PORT = "adb_proxy_port";
+    private static final String KEY_LEGACY_MIGRATED_PROJECT = "legacy_migrated_project";
+    private static final String PROJECT_PREFIX = "project.";
+    private static final String[] PROJECT_KEYS = {
+            KEY_CONFIG, KEY_PEER_ID, KEY_PRIVATE_KEY, KEY_PUBLIC_KEY,
+            KEY_JOIN_RESPONSE, KEY_JOIN_KEY, KEY_SERIAL
+    };
 
     private ConfigStore() {
     }
@@ -82,28 +88,52 @@ final class ConfigStore {
 
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
-                .putString(KEY_CONFIG, config.toString())
-                .putString(KEY_PEER_ID, identity.getString("peer_id"))
-                .putString(KEY_PRIVATE_KEY, identity.getString("private_key"))
-                .putString(KEY_PUBLIC_KEY, identity.optString("public_key", ""))
-                .putString(KEY_JOIN_RESPONSE, response)
-                .putString(KEY_JOIN_KEY, joinKey)
-                .putString(KEY_SERIAL, serial)
+                .putString(scopedKey(context, KEY_CONFIG), config.toString())
+                .putString(scopedKey(context, KEY_PEER_ID), identity.getString("peer_id"))
+                .putString(scopedKey(context, KEY_PRIVATE_KEY), identity.getString("private_key"))
+                .putString(scopedKey(context, KEY_PUBLIC_KEY), identity.optString("public_key", ""))
+                .putString(scopedKey(context, KEY_JOIN_RESPONSE), response)
+                .putString(scopedKey(context, KEY_JOIN_KEY), joinKey)
+                .putString(scopedKey(context, KEY_SERIAL), serial)
                 .apply();
         return identity.getString("peer_id");
+    }
+
+    static String ensurePeerId(Context context, String name) throws IOException, JSONException {
+        return loadOrCreateIdentity(context, name).getString("peer_id");
+    }
+
+    static void saveProjectConfig(Context context, JSONObject config, String name)
+            throws IOException, JSONException {
+        JSONObject identity = loadOrCreateIdentity(context, name);
+        JSONObject storedConfig = new JSONObject(config.toString());
+        storedConfig.put("key", identity.getString("private_key"));
+        storedConfig.put("public", false);
+        String serial = storedConfig.optString("serial_number", "");
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(scopedKey(context, KEY_CONFIG), storedConfig.toString())
+                .putString(scopedKey(context, KEY_PEER_ID), identity.getString("peer_id"))
+                .putString(scopedKey(context, KEY_PRIVATE_KEY), identity.getString("private_key"))
+                .putString(scopedKey(context, KEY_PUBLIC_KEY), identity.optString("public_key", ""))
+                .putString(scopedKey(context, KEY_JOIN_RESPONSE), config.toString())
+                .putString(scopedKey(context, KEY_SERIAL), serial)
+                .apply();
     }
 
     private static JSONObject loadOrCreateIdentity(Context context, String name)
             throws IOException, JSONException {
         SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        String peerId = trimmed(preferences.getString(KEY_PEER_ID, ""));
-        String privateKey = trimmed(preferences.getString(KEY_PRIVATE_KEY, ""));
-        String publicKey = trimmed(preferences.getString(KEY_PUBLIC_KEY, ""));
+        migrateLegacyIdentity(context, preferences);
+        String peerId = trimmed(preferences.getString(scopedKey(context, KEY_PEER_ID), ""));
+        String privateKey = trimmed(preferences.getString(
+                scopedKey(context, KEY_PRIVATE_KEY), ""));
+        String publicKey = trimmed(preferences.getString(scopedKey(context, KEY_PUBLIC_KEY), ""));
 
         // Older installations may have the private key only in the assembled
         // client config. Recover it instead of changing the device identity.
         if (privateKey.isEmpty()) {
-            String storedConfig = preferences.getString(KEY_CONFIG, "");
+            String storedConfig = preferences.getString(scopedKey(context, KEY_CONFIG), "");
             if (storedConfig != null && !storedConfig.trim().isEmpty()) {
                 try {
                     privateKey = trimmed(new JSONObject(storedConfig).optString("key", ""));
@@ -115,7 +145,7 @@ final class ConfigStore {
 
         if (!peerId.isEmpty() && isValidEncodedKey(privateKey)) {
             preferences.edit()
-                    .putString(KEY_PRIVATE_KEY, privateKey)
+                    .putString(scopedKey(context, KEY_PRIVATE_KEY), privateKey)
                     .apply();
             JSONObject identity = new JSONObject();
             identity.put("ok", true);
@@ -142,9 +172,9 @@ final class ConfigStore {
         // Save before contacting the join service. A timeout or rejected join
         // must not cause the next attempt to generate a different peer ID.
         boolean saved = preferences.edit()
-                .putString(KEY_PEER_ID, peerId)
-                .putString(KEY_PRIVATE_KEY, privateKey)
-                .putString(KEY_PUBLIC_KEY, publicKey)
+                .putString(scopedKey(context, KEY_PEER_ID), peerId)
+                .putString(scopedKey(context, KEY_PRIVATE_KEY), privateKey)
+                .putString(scopedKey(context, KEY_PUBLIC_KEY), publicKey)
                 .commit();
         if (!saved) {
             throw new IOException("unable to persist generated libp2p identity");
@@ -187,33 +217,38 @@ final class ConfigStore {
     }
 
     static boolean isConfigured(Context context) {
-        return !context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(KEY_CONFIG, "").isEmpty();
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        migrateLegacyIdentity(context, preferences);
+        return !preferences.getString(scopedKey(context, KEY_CONFIG), "").isEmpty();
     }
 
     static String peerId(Context context) {
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(KEY_PEER_ID, "");
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        migrateLegacyIdentity(context, preferences);
+        return preferences.getString(scopedKey(context, KEY_PEER_ID), "");
     }
 
     static String storedSerial(Context context) {
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(KEY_SERIAL, "");
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        migrateLegacyIdentity(context, preferences);
+        return preferences.getString(scopedKey(context, KEY_SERIAL), "");
     }
 
     static String storedJoinKey(Context context) {
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(KEY_JOIN_KEY, "");
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        migrateLegacyIdentity(context, preferences);
+        return preferences.getString(scopedKey(context, KEY_JOIN_KEY), "");
     }
 
     static String clientConfig(Context context) throws JSONException {
         SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        String stored = preferences.getString(KEY_CONFIG, "");
+        migrateLegacyIdentity(context, preferences);
+        String stored = preferences.getString(scopedKey(context, KEY_CONFIG), "");
         if (stored == null || stored.isEmpty()) {
             throw new JSONException("device has not joined the network");
         }
         JSONObject config = new JSONObject(stored);
-        String serial = preferences.getString(KEY_SERIAL, "");
+        String serial = preferences.getString(scopedKey(context, KEY_SERIAL), "");
         if (serial != null && !serial.isEmpty()) {
             config.put("serial_number", serial);
         }
@@ -231,6 +266,33 @@ final class ConfigStore {
             config.put("tap_targets", targets);
         }
         return config.toString();
+    }
+
+    private static String scopedKey(Context context, String key) {
+        String projectId = PortalStore.projectId(context).trim();
+        return projectId.isEmpty() ? key : PROJECT_PREFIX + projectId + "." + key;
+    }
+
+    private static synchronized void migrateLegacyIdentity(
+            Context context, SharedPreferences preferences) {
+        String projectId = PortalStore.projectId(context).trim();
+        if (projectId.isEmpty()
+                || !preferences.getString(scopedKey(context, KEY_CONFIG), "").isEmpty()) {
+            return;
+        }
+        String migratedProject = preferences.getString(KEY_LEGACY_MIGRATED_PROJECT, "");
+        if (!migratedProject.isEmpty() || preferences.getString(KEY_CONFIG, "").isEmpty()) {
+            return;
+        }
+        SharedPreferences.Editor editor = preferences.edit();
+        for (String key : PROJECT_KEYS) {
+            String value = preferences.getString(key, "");
+            if (value != null && !value.isEmpty()) {
+                editor.putString(PROJECT_PREFIX + projectId + "." + key, value);
+            }
+        }
+        editor.putString(KEY_LEGACY_MIGRATED_PROJECT, projectId).commit();
+        Log.i(TAG, "Migrated legacy libp2p identity into project=" + projectId);
     }
 
     private static String readFully(InputStream stream) throws IOException {

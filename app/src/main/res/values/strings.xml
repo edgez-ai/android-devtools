@@ -88,6 +88,8 @@
     <string name="connection_status">Connection status</string>
     <string name="peer_not_joined">Not connected to EdgeZ</string>
     <string name="peer_id_format">Peer ID: %1$s</string>
+    <string name="project_identity_format">Project identity: %1$s</string>
+    <string name="project_identity_none">No project selected</string>
     <string name="proxy_state_disconnected">Proxy disconnected</string>
     <string name="proxy_detail_disconnected">Join the EdgeZ mesh, then start the proxy.</string>
     <string name="proxy_state_connecting">Connecting to EdgeZ</string>
@@ -143,6 +145,7 @@
     <string name="status_join_before_pairing">Join the EdgeZ network before pairing.</string>
     <string name="status_pairing_search">Pairing search started. Open “Pair device with pairing code”, then reply to the EdgeZ DevTools notification.</string>
     <string name="status_join_before_proxy">Join the EdgeZ network first.</string>
+    <string name="status_choose_project_before_join">Select a project before joining this phone.</string>
     <string name="status_proxy_start">Proxy start requested. Check the persistent notification for status.</string>
     <string name="status_opening_expo">Opening http://127.0.0.1:8081 in the bundled Expo SDK 57 development runtime.</string>
     <string name="status_opening_demo">Opening the embedded off-grid map demo.</string>

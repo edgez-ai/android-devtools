@@ -157,16 +157,16 @@ final class PortalStore {
             String templateId,
             String name,
             String workspaceSize,
-            String deviceSerial,
-            String devicePeerId) throws IOException, JSONException {
+            String devicePeerId,
+            String deviceName) throws IOException, JSONException {
         JSONObject body = new JSONObject();
         body.put("organizationId", organizationId);
         body.put("projectId", projectId);
         body.put("templateId", templateId);
         body.put("name", name);
         body.put("workspaceSize", workspaceSize);
-        body.put("deviceSerial", deviceSerial);
         body.put("devicePeerId", devicePeerId);
+        body.put("deviceName", deviceName);
         return request("POST", BASE_URL + "/api/mobile/templates/deploy",
                 accessToken(context), body);
     }
