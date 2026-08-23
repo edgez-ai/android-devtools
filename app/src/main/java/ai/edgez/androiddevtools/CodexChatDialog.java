@@ -1,12 +1,12 @@
 package ai.edgez.androiddevtools;
 
 import android.app.Activity;
-import android.app.Dialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
@@ -16,6 +16,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.ScrollView;
+import android.widget.Spinner;
 import android.widget.TextView;
 
 import org.json.JSONArray;
@@ -33,6 +34,11 @@ import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 
 final class CodexChatDialog {
+    private static final String[] MODEL_IDS = {
+            "gpt-5.6-luna",
+            "gpt-5.6-terra",
+            "gpt-5.6-sol"
+    };
     private static final int INITIALIZE_ID = 1;
     private static final int THREAD_LIST_ID = 2;
     private static final int THREAD_START_ID = 3;
@@ -42,13 +48,12 @@ final class CodexChatDialog {
     private final Activity activity;
     private final JSONObject connection;
     private final OkHttpClient client;
-    private final Dialog dialog;
     private final FrameLayout root;
     private final LinearLayout messages;
     private final ScrollView messageScroll;
     private final EditText input;
     private final Button send;
-    private final Button conversations;
+    private final Spinner modelSelector;
     private final TextView connectionStatus;
     private final Map<String, JSONObject> threads = new LinkedHashMap<>();
     private WebSocket socket;
@@ -56,34 +61,46 @@ final class CodexChatDialog {
     private String threadId;
     private String pendingPrompt;
     private TextView streamingAgentMessage;
+    private volatile String activeModel;
     private int nextRequestId = 10;
+    private boolean closed;
 
-    static void show(Activity activity, JSONObject connection) {
-        new CodexChatDialog(activity, connection).open();
+    static CodexChatDialog attach(
+            Activity activity,
+            ViewGroup container,
+            JSONObject connection,
+            Spinner modelSelector) {
+        CodexChatDialog client = new CodexChatDialog(activity, connection, modelSelector);
+        container.removeAllViews();
+        container.addView(client.root, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        client.open();
+        return client;
     }
 
-    private CodexChatDialog(Activity activity, JSONObject connection) {
+    private CodexChatDialog(
+            Activity activity, JSONObject connection, Spinner modelSelector) {
         this.activity = activity;
         this.connection = connection;
+        this.modelSelector = modelSelector;
+        this.activeModel = modelAt(modelSelector.getSelectedItemPosition());
         client = new OkHttpClient.Builder()
                 .pingInterval(20, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.MILLISECONDS)
                 .build();
-        dialog = new Dialog(activity,
-                android.R.style.Theme_DeviceDefault_Light_NoActionBar_Fullscreen);
-        root = new FrameLayout(activity);
+        root = new GestureFrameLayout(activity);
         root.setBackgroundColor(color(R.color.edgez_background));
 
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(12), dp(64), dp(12), dp(10));
+        page.setPadding(dp(2), 0, dp(2), 0);
         root.addView(page, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         connectionStatus = text(activity.getString(R.string.workspace_codex_connecting),
                 12, color(R.color.edgez_text_muted));
         connectionStatus.setGravity(Gravity.CENTER);
-        page.addView(connectionStatus, margins(0, 0, 0, 8));
+        page.addView(connectionStatus, margins(0, 0, 0, 4));
 
         messages = new LinearLayout(activity);
         messages.setOrientation(LinearLayout.VERTICAL);
@@ -119,33 +136,9 @@ final class CodexChatDialog {
         composer.addView(send, new LinearLayout.LayoutParams(dp(76), dp(46)));
         page.addView(composer);
 
-        Button close = button(R.string.workspace_codex_close, false, view -> dialog.dismiss());
-        close.setElevation(dp(8));
-        FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(44), Gravity.TOP | Gravity.START);
-        closeParams.setMargins(dp(12), dp(10), 0, 0);
-        root.addView(close, closeParams);
-
-        conversations = button(R.string.workspace_codex_conversations, false,
-                view -> showConversationDrawer());
-        conversations.setEnabled(false);
-        conversations.setElevation(dp(8));
-        FrameLayout.LayoutParams conversationParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(44), Gravity.TOP | Gravity.END);
-        conversationParams.setMargins(0, dp(10), dp(12), 0);
-        root.addView(conversations, conversationParams);
-
-        dialog.setContentView(root);
-        dialog.setOnDismissListener(ignored -> close());
     }
 
     private void open() {
-        dialog.show();
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setLayout(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT);
-        }
         String url = connection.optString("webSocketUrl", "");
         String token = connection.optString("token", "");
         if (url.isEmpty() || token.isEmpty()) {
@@ -159,7 +152,9 @@ final class CodexChatDialog {
         socket = client.newWebSocket(request, new Listener());
     }
 
-    private void close() {
+    void close() {
+        if (closed) return;
+        closed = true;
         if (conversationDrawer != null) conversationDrawer.dismiss();
         if (socket != null) socket.close(1000, "Mobile Codex chat closed");
         socket = null;
@@ -186,13 +181,13 @@ final class CodexChatDialog {
             connectionStatus.setText(R.string.workspace_codex_connected);
             input.setEnabled(true);
             send.setEnabled(true);
-            conversations.setEnabled(true);
         });
     }
 
     private void sendPrompt() {
         String prompt = input.getText().toString().trim();
         if (prompt.isEmpty() || socket == null) return;
+        activeModel = modelAt(modelSelector.getSelectedItemPosition());
         input.setText("");
         addMessage(prompt, true);
         send.setEnabled(false);
@@ -210,7 +205,8 @@ final class CodexChatDialog {
 
     private void startThread() throws JSONException {
         sendRequest(THREAD_START_ID, "thread/start", new JSONObject()
-                .put("cwd", "/home/jovyan/workspace"));
+                .put("cwd", "/home/jovyan/workspace")
+                .put("model", selectedModel()));
     }
 
     private void resumeThread(String id) {
@@ -237,7 +233,16 @@ final class CodexChatDialog {
                 .put("text", prompt));
         sendRequest(nextRequestId++, "turn/start", new JSONObject()
                 .put("threadId", threadId)
+                .put("model", selectedModel())
                 .put("input", content));
+    }
+
+    private String selectedModel() {
+        return activeModel;
+    }
+
+    private String modelAt(int position) {
+        return MODEL_IDS[Math.max(0, Math.min(position, MODEL_IDS.length - 1))];
     }
 
     private void handle(JSONObject message) throws JSONException {
@@ -302,7 +307,36 @@ final class CodexChatDialog {
                 if (thread != null) threads.put(thread.optString("id", ""), thread);
             }
         }
-        activity.runOnUiThread(() -> conversations.setEnabled(true));
+    }
+
+    private final class GestureFrameLayout extends FrameLayout {
+        private float gestureStartX;
+        private float gestureStartY;
+        private boolean trackingConversationGesture;
+
+        GestureFrameLayout(Activity context) {
+            super(context);
+        }
+
+        @Override
+        public boolean dispatchTouchEvent(MotionEvent event) {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                gestureStartX = event.getX();
+                gestureStartY = event.getY();
+                trackingConversationGesture = gestureStartX >= getWidth() - dp(56);
+            } else if (event.getActionMasked() == MotionEvent.ACTION_UP
+                    && trackingConversationGesture) {
+                float horizontalDistance = gestureStartX - event.getX();
+                float verticalDistance = Math.abs(gestureStartY - event.getY());
+                trackingConversationGesture = false;
+                if (horizontalDistance >= dp(56) && verticalDistance <= dp(120)) {
+                    showConversationDrawer();
+                }
+            } else if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                trackingConversationGesture = false;
+            }
+            return super.dispatchTouchEvent(event);
+        }
     }
 
     private void applyStartedThread(JSONObject result) throws JSONException {

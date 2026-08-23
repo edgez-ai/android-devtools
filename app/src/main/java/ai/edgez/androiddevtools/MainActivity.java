@@ -99,6 +99,7 @@ public final class MainActivity extends Activity {
     private LinearLayout templatesContent;
     private LinearLayout templateDetailContent;
     private LinearLayout workspaceChatContainer;
+    private CodexChatDialog workspaceCodexClient;
     private EditText workspaceNameInput;
     private Spinner workspaceSizeSpinner;
     private Spinner templateProjectSpinner;
@@ -125,6 +126,7 @@ public final class MainActivity extends Activity {
     private boolean showingSettings;
     private boolean showingTemplates;
     private boolean showingWorkspaceDetail;
+    private int selectedCodexModelIndex;
     private int selectedHomeTab;
     private int selectedStep;
 
@@ -257,6 +259,10 @@ public final class MainActivity extends Activity {
     }
 
     private void resetViewReferences() {
+        if (workspaceCodexClient != null) {
+            workspaceCodexClient.close();
+            workspaceCodexClient = null;
+        }
         peerIdText = null;
         permissionStatusText = null;
         proxyStateText = null;
@@ -924,35 +930,59 @@ public final class MainActivity extends Activity {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(color(R.color.edgez_background));
         LinearLayout content = pageContent();
-        content.setPadding(dp(16), dp(82), dp(16), dp(24));
+        content.setPadding(dp(10), dp(76), dp(10), dp(10));
 
         workspaceChatContainer = new LinearLayout(this);
         workspaceChatContainer.setOrientation(LinearLayout.VERTICAL);
         workspaceChatContainer.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout chatTarget = workspaceChatContainer;
         if (workspace.optBoolean("ready", false)) {
-            Button talk = actionButton(R.string.workspace_talk_codex,
-                    view -> openWorkspaceCodex(workspace, (Button) view), true);
-            workspaceChatContainer.addView(talk);
+            workspaceChatContainer.addView(description(R.string.workspace_codex_loading));
         } else {
-            Button unavailable = actionButton(R.string.workspace_codex_requires_start,
-                    view -> { }, false);
-            unavailable.setEnabled(false);
-            unavailable.setAlpha(0.55f);
+            TextView unavailable = description(R.string.workspace_codex_requires_start);
+            unavailable.setGravity(Gravity.CENTER);
             workspaceChatContainer.addView(unavailable);
         }
-        content.addView(workspaceChatContainer);
+        content.addView(workspaceChatContainer, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         root.addView(content, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout navigation = new LinearLayout(this);
+        navigation.setOrientation(LinearLayout.HORIZONTAL);
+        navigation.setGravity(Gravity.CENTER_VERTICAL);
+        navigation.setPadding(dp(12), dp(10), dp(12), dp(8));
 
         Button back = compactLightButton(R.string.back_to_apps, view -> {
             selectedHomeTab = 1;
             showHomePage();
         });
         back.setElevation(dp(8));
-        FrameLayout.LayoutParams backParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(46), Gravity.TOP | Gravity.START);
-        backParams.setMargins(dp(16), dp(14), 0, 0);
-        root.addView(back, backParams);
+        navigation.addView(back, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(46)));
+
+        Spinner modelSelector = new Spinner(this);
+        ArrayAdapter<String> modelAdapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item,
+                new String[] { "GPT-5.6 Luna", "GPT-5.6 Terra", "GPT-5.6 Sol" });
+        modelAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        modelSelector.setAdapter(modelAdapter);
+        modelSelector.setSelection(selectedCodexModelIndex);
+        modelSelector.setEnabled(workspace.optBoolean("ready", false));
+        modelSelector.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                selectedCodexModelIndex = position;
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
+        LinearLayout.LayoutParams modelParams = new LinearLayout.LayoutParams(
+                0, dp(46), 1);
+        modelParams.setMargins(dp(8), 0, dp(8), 0);
+        navigation.addView(modelSelector, modelParams);
 
         String state = workspaceState(workspace);
         boolean running = workspace.optBoolean("ready", false)
@@ -963,10 +993,14 @@ public final class MainActivity extends Activity {
         lifecycle.setEnabled(!"starting".equals(state) && !"stopping".equals(state));
         lifecycle.setAlpha(lifecycle.isEnabled() ? 1f : 0.55f);
         lifecycle.setElevation(dp(8));
-        FrameLayout.LayoutParams lifecycleParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(46), Gravity.TOP | Gravity.END);
-        lifecycleParams.setMargins(0, dp(14), dp(16), 0);
-        root.addView(lifecycle, lifecycleParams);
+        navigation.addView(lifecycle, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(46)));
+        root.addView(navigation, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(66), Gravity.TOP));
+
+        if (workspace.optBoolean("ready", false)) {
+            root.post(() -> connectWorkspaceCodex(workspace, chatTarget, modelSelector));
+        }
         return root;
     }
 
@@ -978,24 +1012,26 @@ public final class MainActivity extends Activity {
         return workspace.optString("desiredState", "stopped");
     }
 
-    private void openWorkspaceCodex(JSONObject workspace, Button trigger) {
-        trigger.setEnabled(false);
-        trigger.setText(R.string.workspace_codex_loading);
+    private void connectWorkspaceCodex(
+            JSONObject workspace, LinearLayout target, Spinner modelSelector) {
         String name = workspace.optString("name", "");
         executor.execute(() -> {
             try {
                 JSONObject connection = PortalStore.loadWorkspaceCodexConnection(this,
                         PortalStore.organizationId(this), name);
                 runOnUiThread(() -> {
-                    if (!showingWorkspaceDetail) return;
-                    trigger.setEnabled(true);
-                    trigger.setText(R.string.workspace_talk_codex);
-                    CodexChatDialog.show(this, connection);
+                    if (!showingWorkspaceDetail || workspaceChatContainer != target
+                            || selectedWorkspace == null
+                            || !name.equals(selectedWorkspace.optString("name", ""))) return;
+                    workspaceCodexClient = CodexChatDialog.attach(
+                            this, target, connection, modelSelector);
                 });
             } catch (Throwable throwable) {
                 runOnUiThread(() -> {
-                    trigger.setEnabled(true);
-                    trigger.setText(R.string.workspace_talk_codex);
+                    if (workspaceChatContainer == target) {
+                        target.removeAllViews();
+                        target.addView(description(R.string.workspace_codex_requires_start));
+                    }
                     showWorkspaceError(getString(
                             R.string.workspace_codex_failed, safeMessage(throwable)));
                 });
