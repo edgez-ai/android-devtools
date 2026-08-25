@@ -9,6 +9,7 @@ import com.facebook.react.defaults.DefaultReactHost
 import com.facebook.react.interfaces.fabric.ReactSurface
 import com.facebook.react.modules.core.DefaultHardwareBackBtnHandler
 import ai.edgez.androiddevtools.EdgezNativePackage
+import ai.edgez.androiddevtools.CodexPreviewBridge
 import java.io.File
 
 /** Loads either an ADB-installed bundle or the APK fallback without Metro. */
@@ -51,6 +52,7 @@ class EmbeddedBundleActivity : AppCompatActivity(), DefaultHardwareBackBtnHandle
     surface = embeddedHost.createSurface(this, "main", null)
     setContentView(checkNotNull(surface.view) { "React surface did not create a view" })
     surface.start()
+    CodexPreviewBridge.attach(this)
   }
 
   override fun onResume() {
@@ -85,6 +87,7 @@ class EmbeddedBundleActivity : AppCompatActivity(), DefaultHardwareBackBtnHandle
   }
 
   override fun onDestroy() {
+    CodexPreviewBridge.detach(this)
     surface.stop()
     embeddedHost.onHostDestroy(this)
     super.onDestroy()

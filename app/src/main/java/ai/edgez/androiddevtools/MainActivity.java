@@ -97,6 +97,26 @@ public final class MainActivity extends Activity {
             refreshUsbStatus();
         }
     };
+    private final BroadcastReceiver codexPreviewReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (CodexPreviewBridge.ACTION_QUERY.equals(action)) {
+                CodexPreviewBridge.broadcastActive(MainActivity.this,
+                        workspaceCodexClient != null && codexWorkspace != null);
+            } else if (CodexPreviewBridge.ACTION_OPEN.equals(action)) {
+                if (codexWorkspace != null) {
+                    startActivity(new Intent(MainActivity.this, MainActivity.class)
+                            .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+                    getWindow().getDecorView().post(() -> showWorkspaceDetail(codexWorkspace));
+                }
+            } else if (CodexPreviewBridge.ACTION_VOICE_START.equals(action)) {
+                if (workspaceCodexClient != null) workspaceCodexClient.startPreviewVoice();
+            } else if (CodexPreviewBridge.ACTION_VOICE_FINISH.equals(action)) {
+                if (workspaceCodexClient != null) workspaceCodexClient.finishPreviewVoice();
+            }
+        }
+    };
     private AlertDialog wirelessDebugDialog;
     private AlertDialog projectSelectionDialog;
     private AlertDialog projectCreationDialog;
@@ -161,6 +181,10 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        registerCodexPreviewReceiver();
+        // A Codex client is process-local; after a process restart there cannot
+        // be a live preview session until a workspace reconnects.
+        CodexPreviewBridge.broadcastActive(this, false);
         showHomePage();
         handleAuthIntent(getIntent());
         reconcileProxyStatus();
@@ -209,6 +233,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        unregisterReceiver(codexPreviewReceiver);
         if (wirelessDebugDialog != null) {
             wirelessDebugDialog.dismiss();
             wirelessDebugDialog = null;
@@ -364,6 +389,20 @@ public final class MainActivity extends Activity {
         }
         codexWorkspace = null;
         codexWorkspaceName = null;
+        CodexPreviewBridge.broadcastActive(this, false);
+    }
+
+    private void registerCodexPreviewReceiver() {
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(CodexPreviewBridge.ACTION_QUERY);
+        filter.addAction(CodexPreviewBridge.ACTION_OPEN);
+        filter.addAction(CodexPreviewBridge.ACTION_VOICE_START);
+        filter.addAction(CodexPreviewBridge.ACTION_VOICE_FINISH);
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(codexPreviewReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(codexPreviewReceiver, filter);
+        }
     }
 
     private View buildHomeContent() {
@@ -1292,6 +1331,7 @@ public final class MainActivity extends Activity {
                             this, target, connection, modelSelector);
                     codexWorkspace = workspace;
                     codexWorkspaceName = name;
+                    CodexPreviewBridge.broadcastActive(this, true);
                 });
             } catch (Throwable throwable) {
                 runOnUiThread(() -> {
@@ -2187,6 +2227,7 @@ public final class MainActivity extends Activity {
     }
 
     private void openEmbeddedBundle(String bundleName, String status) {
+        syncCodexPreviewState();
         Intent intent = new Intent()
                 .setClassName(getPackageName(),
                         "ai.edgez.androiddevtools.runtime.EmbeddedBundleActivity")
@@ -2218,6 +2259,7 @@ public final class MainActivity extends Activity {
     }
 
     private void openExpoLauncher() {
+        syncCodexPreviewState();
         try {
             Class<?> launcher = Class.forName(
                     "expo.modules.devlauncher.launcher.DevLauncherActivity");
@@ -2231,6 +2273,7 @@ public final class MainActivity extends Activity {
     }
 
     private void openExpoProject() {
+        syncCodexPreviewState();
         Uri projectUri = Uri.parse("exp://127.0.0.1:8081");
         Uri developmentClientUri = new Uri.Builder()
                 .scheme("exp+edgez-android-devtools")
@@ -2253,6 +2296,11 @@ public final class MainActivity extends Activity {
         } catch (ActivityNotFoundException exception) {
             statusText.setText(R.string.status_expo_unavailable);
         }
+    }
+
+    private void syncCodexPreviewState() {
+        CodexPreviewBridge.broadcastActive(this,
+                workspaceCodexClient != null && codexWorkspace != null);
     }
 
     @SuppressWarnings("deprecation")

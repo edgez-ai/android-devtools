@@ -178,6 +178,55 @@ final class CodexChatDialog {
         composer.addView(send, new LinearLayout.LayoutParams(dp(76), dp(46)));
         page.addView(composer);
 
+        TextView conversationHandle = text("‹", 26, Color.WHITE);
+        conversationHandle.setGravity(Gravity.CENTER);
+        conversationHandle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        conversationHandle.setBackground(roundRect(color(R.color.edgez_blue), 18));
+        conversationHandle.setContentDescription(
+                activity.getString(R.string.workspace_codex_conversation_handle));
+        conversationHandle.setElevation(dp(8));
+        conversationHandle.setAlpha(0.9f);
+        conversationHandle.setOnClickListener(view -> showConversationDrawer());
+        float[] handleStart = new float[2];
+        boolean[] handleMoved = {false};
+        conversationHandle.setOnTouchListener((view, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    handleStart[0] = event.getRawX();
+                    handleStart[1] = event.getRawY();
+                    handleMoved[0] = false;
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    float distanceX = event.getRawX() - handleStart[0];
+                    float distanceY = event.getRawY() - handleStart[1];
+                    if (distanceX < 0 && Math.abs(distanceX) > Math.abs(distanceY)) {
+                        handleMoved[0] = Math.abs(distanceX) >= dp(8);
+                        view.setTranslationX(Math.max(distanceX, -dp(84)));
+                    }
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    float releasedX = event.getRawX() - handleStart[0];
+                    float releasedY = event.getRawY() - handleStart[1];
+                    boolean draggedOpen = releasedX <= -dp(24)
+                            && Math.abs(releasedX) > Math.abs(releasedY);
+                    boolean tapped = !handleMoved[0]
+                            && Math.abs(releasedX) < dp(8)
+                            && Math.abs(releasedY) < dp(8);
+                    view.animate().translationX(0f).setDuration(140).start();
+                    if (draggedOpen || tapped) view.performClick();
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    view.animate().translationX(0f).setDuration(140).start();
+                    return true;
+                default:
+                    return true;
+            }
+        });
+        FrameLayout.LayoutParams handleParams = new FrameLayout.LayoutParams(
+                dp(30), dp(76), Gravity.END | Gravity.CENTER_VERTICAL);
+        handleParams.setMargins(0, 0, dp(2), 0);
+        root.addView(conversationHandle, handleParams);
+
     }
 
     void attachTo(ViewGroup container) {
@@ -199,6 +248,17 @@ final class CodexChatDialog {
 
     void setModelPosition(int position) {
         activeModel = modelAt(position);
+    }
+
+    void startPreviewVoice() {
+        if (!turnInProgress && !voiceRecording) startVoiceRecognition();
+    }
+
+    void finishPreviewVoice() {
+        if (voiceRecording) {
+            cancelVoiceMessage = false;
+            finishVoiceRecognition();
+        }
     }
 
     private void open() {
@@ -620,6 +680,7 @@ final class CodexChatDialog {
                     streamingAgentMessage = null;
                     streamingAgentMarkdown = null;
                     streamingAgentItemId = null;
+                    CodexPreviewBridge.broadcastUpdate(activity, completedMarkdown);
                 });
             } else if (item != null) {
                 renderActivityItem(item, true);
